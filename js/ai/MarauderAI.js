@@ -4,9 +4,11 @@ export class MarauderAI extends AIBase {
   constructor(game, entity) {
     super(game, entity);
 
-    // Мародёр ищет укрытие только рядом,
-    // чтобы не было тяжёлого перебора карты.
     this.coverSearchRadius = 3;
+
+    // Мародёр не должен сливать весь ход в стрельбу.
+    // Это не modes, это просто лимит одиночных выстрелов за ход.
+    this.maxShotsPerTurn = 3;
   }
 
   planTurn() {
@@ -23,65 +25,36 @@ export class MarauderAI extends AIBase {
     const entity = this.entity;
 
     const pm = this.getWeapon('pm');
-    const lasergun = this.getWeapon('lasergun');
+    const pmRange = pm ? pm.maxRange : 12;
 
-    const closeRange = pm ? pm.maxRange : 8;
+    const distance = this.getDistanceToTarget(target);
 
-    const distanceToTarget = this.getDistanceToTarget(target);
-
-    const isInCover = this.isNearCover(
-      entity.plannedQ,
-      entity.plannedR
+    console.log(
+      `[MarauderAI]: ${entity.name} стартует. ` +
+      `distance=${distance}, pmRange=${pmRange}, AP=${entity.currentAP}`
     );
 
-    const canShootNow = this.canShootTarget(target);
-
-    // 1. Если мародёр далеко — НЕ стреляем сразу из лазерки.
-    // Сначала сближаемся до дистанции PM.
-    if (distanceToTarget > closeRange) {
-      // Если рядом есть укрытие, из которого можно будет стрелять,
-      // сначала занимаем его.
-      const coverForShot = this.findNearbyCoverPosition(
-        this.coverSearchRadius,
-        target,
-        true
-      );
-
-      if (coverForShot) {
-        console.log(
-          `[MarauderAI]: ${entity.name} бежит в укрытие перед стрельбой.`
-        );
-
-        this.runPath(coverForShot.path, target);
-
-        if (this.canShootTarget(target)) {
-          this.shootTargetUntilNoAP(target);
-        }
-
-        this.finishTurn(target);
-        return;
-      }
-
-      // Укрытия рядом нет — просто сближаемся.
-      // Метод сам оставит AP на выстрел, если после шага цель будет в дальности.
-      console.log(
-        `[MarauderAI]: ${entity.name} далеко от цели. ` +
-        `Дистанция ${distanceToTarget}, сближается до ${closeRange}.`
-      );
-
-      this.runTowardTargetUntilDistance(target, closeRange);
+    // 1. Если мародёр дальше PM-дистанции,
+    // он НЕ ищет ближайшее укрытие и НЕ стреляет с места лазеркой.
+    // Сначала сближается бегом.
+    if (distance > pmRange) {
+      this.runTowardDistance(target, pmRange);
 
       if (this.canShootTarget(target)) {
-        this.shootTargetUntilNoAP(target);
+        this.shootTargetLimited(target, this.maxShotsPerTurn);
       }
 
       this.finishTurn(target);
       return;
     }
 
-    // 2. Мародёр уже на ближней/средней дистанции.
-    // Если он не в укрытии, пробует занять укрытие рядом,
-    // но только если после бега сможет стрелять.
+    // 2. Если мародёр уже на PM-дистанции,
+    // тогда можно думать про укрытие рядом.
+    const isInCover = this.isNearCover(
+      entity.plannedQ,
+      entity.plannedR
+    );
+
     if (!isInCover) {
       const coverForShot = this.findNearbyCoverPosition(
         this.coverSearchRadius,
@@ -89,37 +62,123 @@ export class MarauderAI extends AIBase {
         true
       );
 
-      if (coverForShot) {
+      if (coverForShot && coverForShot.path.length > 0) {
         console.log(
-          `[MarauderAI]: ${entity.name} занимает ближайшее укрытие и стреляет.`
+          `[MarauderAI]: ${entity.name} рядом с целью, занимает укрытие.`
         );
 
         this.runPath(coverForShot.path, target);
-
-        if (this.canShootTarget(target)) {
-          this.shootTargetUntilNoAP(target);
-        }
-
-        this.finishTurn(target);
-        return;
       }
     }
 
-    // 3. Если уже можно стрелять — стреляем.
-    if (canShootNow || this.canShootTarget(target)) {
-      this.shootTargetUntilNoAP(target);
-      this.finishTurn(target);
-      return;
-    }
-
-    // 4. Запасной вариант:
-    // если почему-то всё ещё не можем стрелять, сближаемся.
-    this.runTowardTargetUntilDistance(target, closeRange);
-
+    // 3. После сближения / укрытия стреляет ограниченное число раз.
     if (this.canShootTarget(target)) {
-      this.shootTargetUntilNoAP(target);
+      this.shootTargetLimited(target, this.maxShotsPerTurn);
+    } else {
+      this.runTowardDistance(target, pmRange);
+
+      if (this.canShootTarget(target)) {
+        this.shootTargetLimited(target, this.maxShotsPerTurn);
+      }
     }
 
     this.finishTurn(target);
+  }
+
+  runTowardDistance(target, desiredDistance) {
+    const entity = this.entity;
+    if (!entity || !target) return 0;
+
+    const path = this.game.grid.findSmartPath(
+      entity,
+      target.plannedQ,
+      target.plannedR
+    );
+
+    if (!path || path.length === 0) {
+      entity.lookAt(target.plannedQ, target.plannedR);
+      return 0;
+    }
+
+    let steps = 0;
+
+    entity.state = 'run';
+    entity.skin = 'run';
+
+    for (const step of path) {
+      const currentDistance = this.getDistance(
+        entity.plannedQ,
+        entity.plannedR,
+        target.plannedQ,
+        target.plannedR
+      );
+
+      if (currentDistance <= desiredDistance) {
+        break;
+      }
+
+      const isTargetCell =
+        Number(step.q) === Number(target.plannedQ) &&
+        Number(step.r) === Number(target.plannedR);
+
+      if (isTargetCell) {
+        break;
+      }
+
+      const distanceAfterStep = this.getDistance(
+        step.q,
+        step.r,
+        target.plannedQ,
+        target.plannedR
+      );
+
+      const weaponNameAfterStep = this.chooseWeaponByDistance(distanceAfterStep);
+      const weaponAfterStep = this.getWeapon(weaponNameAfterStep);
+
+      // Если после шага появится возможность стрелять,
+      // оставляем AP хотя бы на один выстрел.
+      const reserveAP =
+        weaponAfterStep && distanceAfterStep <= weaponAfterStep.maxRange
+          ? weaponAfterStep.apCost
+          : 0;
+
+      const moved = this.runPath([step], target, reserveAP);
+
+      if (moved === 0) {
+        break;
+      }
+
+      steps += moved;
+    }
+
+    console.log(
+      `[MarauderAI]: ${entity.name} сблизился бегом. ` +
+      `steps=${steps}, planned=${entity.plannedQ},${entity.plannedR}, AP=${entity.currentAP}`
+    );
+
+    return steps;
+  }
+
+  shootTargetLimited(target, maxShots = 3) {
+    const entity = this.entity;
+    if (!entity || !target) return 0;
+
+    let shots = 0;
+
+    while (shots < maxShots && this.canShootTarget(target)) {
+      const weaponName = this.chooseWeaponForTarget(target);
+
+      if (!this.shootTarget(target, weaponName)) {
+        break;
+      }
+
+      shots++;
+    }
+
+    console.log(
+      `[MarauderAI]: ${entity.name} сделал выстрелов: ${shots}, AP=${entity.currentAP}`
+    );
+
+    return shots;
   }
 }
