@@ -19,15 +19,13 @@ export class TurnManager {
         window.roundCount = 1;
         gameState = 'PLANNING';
         console.log("Фаза планирования. Раздайте приказы персонажам.");
-
-        //Запускаем ботов
-        this.ai._init_planTurn();
     }
 
     //Вызывается при нажатии кнопки "ГОТОВ"
     startTurnExecution() {
 
-        if (window.gameState !== 'PLANNING') return;
+        if(window.gameState !== 'PLANNING') return;
+        this.ai._init_planTurn();
 
         audioManager.play('start_battle', 0.2);
 
@@ -76,9 +74,6 @@ export class TurnManager {
         this.game.grid.highlights = [];
 
         this.game.input._updateGridHighlights();
-
-        //Запускаем ботов
-        this.ai._init_planTurn();
 
         const currentUI = this.game.game.sceneManager.currentScene?.ui;
 
