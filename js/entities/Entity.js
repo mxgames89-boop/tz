@@ -30,6 +30,7 @@ export class Entity {
         this.maxMana = stats.mana;
         this.name = name;
         this.lvl = 15;
+        this.weapons = stats.weapons;
         this.weapon = 'lasergun';
 
         // Изометрические константы
