@@ -112,7 +112,7 @@ export class CombatAI {
         weaponConfig,
         {
           reserveAPForShot: false,
-          requireCanShoot: true
+          requireCanShoot: false
         }
       );
 
@@ -265,37 +265,20 @@ export class CombatAI {
 
       // Главный приоритет — минимально пройти.
       // Так бот подходит ровно настолько, насколько нужно для стрельбы.
-      const baseScore =
-        position.moveCost * 1000 +
-        rangePenalty * 20 +
-        distance * 5;
 
-      if (coverInfo) {
-        // Чем выше passability у мягкого укрытия,
-        // тем выше шанс, что оно поймает входящую пулю.
-        const coverBonus = coverInfo.coverScore * 80;
+      if(coverInfo) {
+        const candidate = {
+          ...position,
+          coverInfo,
+          distanceToTarget: distance,
+          canShootFromCover: true,
+          pathLength: position.path.length,
+          coverPower: coverInfo.coverScore || 0,
+          rangePenalty
+        };
 
-        // Позиция, где укрытие работает и для защиты, и для выстрела, лучше.
-        const twoWayCoverBonus =
-          coverInfo.protectsBot && coverInfo.letsBotShootByStopRule
-            ? 1000
-            : 0;
-
-        const score = baseScore - coverBonus - twoWayCoverBonus;
-
-        if (score < bestCoverScore) {
-          bestCoverScore = score;
-          bestCover = {
-            ...position,
-            coverInfo
-          };
-        }
-      } else {
-        const score = baseScore + 5000;
-
-        if (score < bestOpenScore) {
-          bestOpenScore = score;
-          bestOpen = position;
+        if (!bestCover || this.isBetterNearestCover(candidate, bestCover)) {
+          bestCover = candidate;
         }
       }
     }
@@ -775,7 +758,7 @@ export class CombatAI {
 
   findBestCoverPosition(bot, target, weaponConfig, options = {}) {
     const reserveAPForShot = options.reserveAPForShot || false;
-    const requireCanShoot = options.requireCanShoot !== false;
+    const requireCanShoot = options.requireCanShoot === true;
 
     const reservedAP = reserveAPForShot ? weaponConfig.apCost : 0;
     const moveBudget = bot.currentAP - reservedAP;
@@ -787,7 +770,6 @@ export class CombatAI {
     let best = null;
 
     for (const position of reachable) {
-      // Текущую клетку не считаем, потому что бот уже в открытую.
       if (!position.path || position.path.length === 0) continue;
 
       const coverInfo = this.getCoverInfoAt(
@@ -806,48 +788,66 @@ export class CombatAI {
         target.plannedR
       );
 
-      if (distanceToTarget > weaponConfig.maxRange) continue;
+      const canShootFromCover = this.canShootGeometryFrom(
+        position.q,
+        position.r,
+        target.plannedQ,
+        target.plannedR,
+        weaponConfig
+      );
 
-      if (requireCanShoot) {
-        const canShootFromCover = this.canShootGeometryFrom(
-          position.q,
-          position.r,
-          target.plannedQ,
-          target.plannedR,
-          weaponConfig
-        );
-
-        if (!canShootFromCover) continue;
-      }
-
-      const optimalRange = weaponConfig.optimalRange || weaponConfig.maxRange;
-      const rangePenalty = Math.abs(distanceToTarget - optimalRange);
+      if (requireCanShoot && !canShootFromCover) continue;
 
       const candidate = {
         ...position,
         coverInfo,
         distanceToTarget,
-        rangePenalty,
+        canShootFromCover,
         pathLength: position.path.length,
         coverPower: coverInfo.coverScore || 0
       };
 
-      if (!best || this.isBetterCoverCandidate(candidate, best)) {
+      if (!best || this.isBetterNearestCover(candidate, best)) {
         best = candidate;
       }
     }
 
     if (best) {
       console.log(
-        `[CombatAI]: выбрано БЛИЖАЙШЕЕ укрытие для ${bot.name}: ` +
+        `[CombatAI]: выбрано ближайшее укрытие: ` +
         `${best.q},${best.r} за ${best.coverInfo.object.type} ` +
         `${best.coverInfo.coverQ},${best.coverInfo.coverR}. ` +
         `moveCost=${best.moveCost}, steps=${best.pathLength}, ` +
-        `coverPower=${best.coverPower}`
+        `canShoot=${best.canShootFromCover}`
       );
     }
 
     return best;
+  }
+
+  isBetterNearestCover(candidate, best) {
+    // 1. Главное — меньше AP на движение.
+    if (candidate.moveCost !== best.moveCost) {
+      return candidate.moveCost < best.moveCost;
+    }
+
+    // 2. Если AP одинаково — меньше шагов.
+    if (candidate.pathLength !== best.pathLength) {
+      return candidate.pathLength < best.pathLength;
+    }
+
+    // 3. Если оба одинаково близко — лучше та позиция, откуда можно стрелять.
+    if (candidate.canShootFromCover !== best.canShootFromCover) {
+      return candidate.canShootFromCover;
+    }
+
+    // 4. Если одинаково — более сильное укрытие.
+    if (candidate.coverPower !== best.coverPower) {
+      return candidate.coverPower > best.coverPower;
+    }
+
+    // 5. И только в самом конце — ближе к цели.
+    return candidate.distanceToTarget < best.distanceToTarget;
   }
 
   isBetterCoverCandidate(candidate, best) {
