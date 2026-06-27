@@ -1,6 +1,6 @@
 import { GAME_CONFIG } from '../config.js';
 import { battleRecorder } from './BattleRecorder.js';
-import { CombatAI } from '../ai/CombatAI.js';
+import { AI } from '../ai/AI.js';
 import { TurnSimulator } from './TurnSimulator.js';
 import { AnimationPlayer } from '../render/AnimationPlayer.js';
 import { audioManager } from '../audio/AudioManager.js';
@@ -12,7 +12,7 @@ export class TurnManager {
 
         this.simulator = new TurnSimulator(this.game);
         this.player = new AnimationPlayer(this.game);
-        this.ai = new CombatAI(this.game);
+        this.ai = new AI(this.game);
     }
 
     initFirstTurn() {
@@ -22,10 +22,11 @@ export class TurnManager {
     }
 
     //Вызывается при нажатии кнопки "ГОТОВ"
-    startTurnExecution() {
+    async startTurnExecution() {
 
         if(window.gameState !== 'PLANNING') return;
-        this.ai._init_planTurn();
+        
+        await this.ai.planAll();
 
         audioManager.play('start_battle', 0.2);
 
