@@ -4,6 +4,8 @@ export class MarauderAI extends AIBase {
   constructor(game, entity) {
     super(game, entity);
 
+    // Мародёр ищет укрытие только рядом,
+    // чтобы не было тяжёлого перебора карты.
     this.coverSearchRadius = 3;
   }
 
@@ -20,21 +22,25 @@ export class MarauderAI extends AIBase {
     const target = this.makeTarget(player);
     const entity = this.entity;
 
+    const pm = this.getWeapon('pm');
+    const lasergun = this.getWeapon('lasergun');
+
+    const closeRange = pm ? pm.maxRange : 8;
+
+    const distanceToTarget = this.getDistanceToTarget(target);
+
     const isInCover = this.isNearCover(
       entity.plannedQ,
       entity.plannedR
     );
 
-    // 1. Уже стоит в укрытии и может стрелять.
-    if (isInCover && this.canShootTarget(target)) {
-      this.shootTargetUntilNoAP(target);
-      this.finishTurn(target);
-      return;
-    }
+    const canShootNow = this.canShootTarget(target);
 
-    // 2. Может стрелять, но стоит не в укрытии.
-    // Сначала пробует занять укрытие рядом, если после бега останется AP на выстрел.
-    if (!isInCover && this.canShootTarget(target)) {
+    // 1. Если мародёр далеко — НЕ стреляем сразу из лазерки.
+    // Сначала сближаемся до дистанции PM.
+    if (distanceToTarget > closeRange) {
+      // Если рядом есть укрытие, из которого можно будет стрелять,
+      // сначала занимаем его.
       const coverForShot = this.findNearbyCoverPosition(
         this.coverSearchRadius,
         target,
@@ -42,6 +48,10 @@ export class MarauderAI extends AIBase {
       );
 
       if (coverForShot) {
+        console.log(
+          `[MarauderAI]: ${entity.name} бежит в укрытие перед стрельбой.`
+        );
+
         this.runPath(coverForShot.path, target);
 
         if (this.canShootTarget(target)) {
@@ -52,21 +62,14 @@ export class MarauderAI extends AIBase {
         return;
       }
 
-      this.shootTargetUntilNoAP(target);
-      this.finishTurn(target);
-      return;
-    }
+      // Укрытия рядом нет — просто сближаемся.
+      // Метод сам оставит AP на выстрел, если после шага цель будет в дальности.
+      console.log(
+        `[MarauderAI]: ${entity.name} далеко от цели. ` +
+        `Дистанция ${distanceToTarget}, сближается до ${closeRange}.`
+      );
 
-    // 3. Стрелять пока нельзя.
-    // Если рядом есть укрытие — занимает его бегом.
-    const nearbyCover = this.findNearbyCoverPosition(
-      this.coverSearchRadius,
-      target,
-      false
-    );
-
-    if (nearbyCover) {
-      this.runPath(nearbyCover.path, target);
+      this.runTowardTargetUntilDistance(target, closeRange);
 
       if (this.canShootTarget(target)) {
         this.shootTargetUntilNoAP(target);
@@ -76,10 +79,43 @@ export class MarauderAI extends AIBase {
       return;
     }
 
-    // 4. Укрытия рядом нет — сближается бегом.
-    this.runTowardTargetUntilCanShoot(target);
+    // 2. Мародёр уже на ближней/средней дистанции.
+    // Если он не в укрытии, пробует занять укрытие рядом,
+    // но только если после бега сможет стрелять.
+    if (!isInCover) {
+      const coverForShot = this.findNearbyCoverPosition(
+        this.coverSearchRadius,
+        target,
+        true
+      );
 
-    // 5. Как только появилась возможность — стреляет.
+      if (coverForShot) {
+        console.log(
+          `[MarauderAI]: ${entity.name} занимает ближайшее укрытие и стреляет.`
+        );
+
+        this.runPath(coverForShot.path, target);
+
+        if (this.canShootTarget(target)) {
+          this.shootTargetUntilNoAP(target);
+        }
+
+        this.finishTurn(target);
+        return;
+      }
+    }
+
+    // 3. Если уже можно стрелять — стреляем.
+    if (canShootNow || this.canShootTarget(target)) {
+      this.shootTargetUntilNoAP(target);
+      this.finishTurn(target);
+      return;
+    }
+
+    // 4. Запасной вариант:
+    // если почему-то всё ещё не можем стрелять, сближаемся.
+    this.runTowardTargetUntilDistance(target, closeRange);
+
     if (this.canShootTarget(target)) {
       this.shootTargetUntilNoAP(target);
     }

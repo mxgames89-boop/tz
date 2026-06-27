@@ -443,4 +443,79 @@ export class AIBase {
   key(q, r) {
     return `${Number(q)},${Number(r)}`;
   }
+
+  runTowardTargetUntilDistance(target, desiredDistance) {
+    const entity = this.entity;
+    if (!entity || !target) return 0;
+
+    const path = this.game.grid.findSmartPath(
+      entity,
+      target.plannedQ,
+      target.plannedR
+    );
+
+    if (!path || path.length === 0) {
+      entity.lookAt(target.plannedQ, target.plannedR);
+      return 0;
+    }
+
+    let steps = 0;
+
+    entity.state = 'run';
+    entity.skin = 'run';
+
+    for (const step of path) {
+      const currentDistance = this.getDistance(
+        entity.plannedQ,
+        entity.plannedR,
+        target.plannedQ,
+        target.plannedR
+      );
+
+      // Уже подошли на нужную дистанцию.
+      if (currentDistance <= desiredDistance) {
+        break;
+      }
+
+      const isTargetCell =
+        Number(step.q) === Number(target.plannedQ) &&
+        Number(step.r) === Number(target.plannedR);
+
+      if (isTargetCell) {
+        break;
+      }
+
+      const distanceAfterStep = this.getDistance(
+        step.q,
+        step.r,
+        target.plannedQ,
+        target.plannedR
+      );
+
+      const weaponNameAfterStep = this.chooseWeaponByDistance(distanceAfterStep);
+      const weaponAfterStep = this.getWeapon(weaponNameAfterStep);
+
+      // Если после этого шага уже можно будет стрелять,
+      // оставляем AP хотя бы на 1 выстрел.
+      const reserveAP =
+        weaponAfterStep && distanceAfterStep <= weaponAfterStep.maxRange
+          ? weaponAfterStep.apCost
+          : 0;
+
+      const moved = this.runPath([step], target, reserveAP);
+
+      if (moved === 0) {
+        break;
+      }
+
+      steps += moved;
+    }
+
+    console.log(
+      `[AI]: ${entity.name} сближается до дистанции ${desiredDistance}. ` +
+      `Шагов: ${steps}, AP=${entity.currentAP}`
+    );
+
+    return steps;
+  }
 }
