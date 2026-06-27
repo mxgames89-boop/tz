@@ -1,11 +1,9 @@
-import { AI } from './AI.js';
+import { AIBase } from './AIBase.js';
 
-export class MarauderAI extends AI {
+export class MarauderAI extends AIBase {
   constructor(game, entity) {
     super(game, entity);
 
-    // Мародёр ищет укрытие только рядом.
-    // Радиус маленький, чтобы ИИ не перебирал всю карту.
     this.coverSearchRadius = 3;
   }
 
@@ -35,8 +33,7 @@ export class MarauderAI extends AI {
     }
 
     // 2. Может стрелять, но стоит не в укрытии.
-    // Сначала ищет укрытие в радиусе 2-3 клеток.
-    // Идёт туда только если после бега останется AP на выстрел.
+    // Сначала пробует занять укрытие рядом, если после бега останется AP на выстрел.
     if (!isInCover && this.canShootTarget(target)) {
       const coverForShot = this.findNearbyCoverPosition(
         this.coverSearchRadius,
@@ -55,14 +52,13 @@ export class MarauderAI extends AI {
         return;
       }
 
-      // Укрытия рядом нет — стреляет с места при первой возможности.
       this.shootTargetUntilNoAP(target);
       this.finishTurn(target);
       return;
     }
 
     // 3. Стрелять пока нельзя.
-    // Если рядом есть любое укрытие — занимает его бегом.
+    // Если рядом есть укрытие — занимает его бегом.
     const nearbyCover = this.findNearbyCoverPosition(
       this.coverSearchRadius,
       target,
@@ -81,10 +77,9 @@ export class MarauderAI extends AI {
     }
 
     // 4. Укрытия рядом нет — сближается бегом.
-    // Останавливается, как только появляется возможность стрелять.
     this.runTowardTargetUntilCanShoot(target);
 
-    // 5. При первой возможности стреляет.
+    // 5. Как только появилась возможность — стреляет.
     if (this.canShootTarget(target)) {
       this.shootTargetUntilNoAP(target);
     }
