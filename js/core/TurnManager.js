@@ -22,11 +22,11 @@ export class TurnManager {
     }
 
     //Вызывается при нажатии кнопки "ГОТОВ"
-    async startTurnExecution() {
+    startTurnExecution() {
 
         if(window.gameState !== 'PLANNING') return;
         
-        await this.ai.planAll();
+        this.ai.planAll();
 
         audioManager.play('start_battle', 0.2);
 
