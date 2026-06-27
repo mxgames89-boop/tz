@@ -4,13 +4,8 @@ export class MarauderAI extends AIBase {
   constructor(game, entity) {
     super(game, entity);
 
-    // Маленький радиус, чтобы не было тяжёлых просчётов.
     this.coverSearchRadiusMin = 2;
     this.coverSearchRadiusMax = 3;
-
-    // Бот больше не стреляет на все ОД.
-    this.minShotsPerTurn = 1;
-    this.maxShotsPerTurn = 15;
   }
 
   planTurn() {
@@ -27,15 +22,13 @@ export class MarauderAI extends AIBase {
     const entity = this.entity;
 
     const pm = this.getWeapon('pm');
-    const laser = this.getWeapon('lasergun');
-
     const pmRange = pm ? pm.maxRange : 12;
     const pmOptimalRange = pm ? pm.optimalRange : 5;
 
     const distance = this.getDistanceToTarget(target);
 
-    const canShootPM = this.canShootWithWeapon(target, 'pm');
-    const canShootLaser = this.canShootWithWeapon(target, 'lasergun');
+    const canShootPM = this.canShootTarget(target, 'pm');
+    const canShootLaser = this.canShootTarget(target, 'lasergun');
 
     const isInCover = this.isNearCover(
       entity.plannedQ,
@@ -89,10 +82,6 @@ export class MarauderAI extends AIBase {
       isInCover
     } = context;
 
-    // Далеко от игрока:
-    // иногда стреляет лазеркой с места,
-    // иногда бежит сближаться под ПМ,
-    // иногда ищет укрытие.
     if (distance > pmRange) {
       if (canShootLaser) {
         return this.weightedRandom([
@@ -108,9 +97,6 @@ export class MarauderAI extends AIBase {
       ]);
     }
 
-    // Уже близко.
-    // Если ПМ достаёт, чаще атакует с ПМ,
-    // но иногда всё равно ищет укрытие.
     if (canShootPM) {
       if (isInCover) {
         return this.weightedRandom([
@@ -134,21 +120,16 @@ export class MarauderAI extends AIBase {
   }
 
   tacticLaserStand(target) {
-    if (!this.canShootWithWeapon(target, 'lasergun')) {
+    if (!this.canShootTarget(target, 'lasergun')) {
       this.tacticRushPM(target);
       return;
     }
-
-    const shots = this.randomInt(
-      this.minShotsPerTurn,
-      this.maxShotsPerTurn
-    );
 
     console.log(
       `[MarauderAI]: ${this.entity.name} стреляет с места лазерной винтовкой.`
     );
 
-    this.shootTargetLimited(target, shots, 'lasergun');
+    this.shootUntilNoAPWithWeapon(target, 'lasergun');
   }
 
   tacticRushPM(target, minDesiredRange = 5, maxDesiredRange = 12) {
@@ -164,20 +145,13 @@ export class MarauderAI extends AIBase {
 
     this.runTowardDistance(target, desiredRange, 'pm');
 
-    if (this.canShootWithWeapon(target, 'pm')) {
-      const shots = this.randomInt(
-        this.minShotsPerTurn,
-        this.maxShotsPerTurn
-      );
-
-      this.shootTargetLimited(target, shots, 'pm');
+    if (this.canShootTarget(target, 'pm')) {
+      this.shootUntilNoAPWithWeapon(target, 'pm');
       return;
     }
 
-    // Если до ПМ не добежал, но лазерка достаёт —
-    // иногда делает 1 выстрел, чтобы ход не был пустой.
-    if (this.canShootWithWeapon(target, 'lasergun') && this.chance(0.45)) {
-      this.shootTargetLimited(target, 1, 'lasergun');
+    if (this.canShootTarget(target, 'lasergun')) {
+      this.shootUntilNoAPWithWeapon(target, 'lasergun');
     }
   }
 
@@ -206,32 +180,20 @@ export class MarauderAI extends AIBase {
       );
     }
 
-    // После укрытия стреляет тем, что достаёт.
-    if (this.canShootWithWeapon(target, 'pm')) {
-      this.shootTargetLimited(
-        target,
-        this.randomInt(1, this.maxShotsPerTurn),
-        'pm'
-      );
+    if (this.canShootTarget(target, 'pm')) {
+      this.shootUntilNoAPWithWeapon(target, 'pm');
       return;
     }
 
-    if (this.canShootWithWeapon(target, 'lasergun')) {
-      this.shootTargetLimited(
-        target,
-        this.randomInt(1, 2),
-        'lasergun'
-      );
+    if (this.canShootTarget(target, 'lasergun')) {
+      this.shootUntilNoAPWithWeapon(target, 'lasergun');
       return;
     }
 
-    // Если из укрытия всё ещё не достаёт — сближается.
     this.tacticRushPM(target);
   }
 
   tacticPMAttack(target, pmOptimalRange = 5, pmRange = 12) {
-    // Иногда даже на PM-дистанции чуть сближается,
-    // чтобы поведение не было одинаковым.
     if (this.chance(0.35)) {
       const desiredRange = this.randomInt(
         Math.max(1, pmOptimalRange),
@@ -241,22 +203,19 @@ export class MarauderAI extends AIBase {
       this.runTowardDistance(target, desiredRange, 'pm');
     }
 
-    if (this.canShootWithWeapon(target, 'pm')) {
-      this.shootTargetLimited(
-        target,
-        this.randomInt(this.minShotsPerTurn, this.maxShotsPerTurn),
-        'pm'
-      );
+    if (this.canShootTarget(target, 'pm')) {
+      this.shootUntilNoAPWithWeapon(target, 'pm');
       return;
     }
 
-    if (this.canShootWithWeapon(target, 'lasergun')) {
-      this.shootTargetLimited(target, 1, 'lasergun');
+    if (this.canShootTarget(target, 'lasergun')) {
+      this.shootUntilNoAPWithWeapon(target, 'lasergun');
     }
   }
 
   runTowardDistance(target, desiredDistance, reserveWeaponName = null) {
     const entity = this.entity;
+
     if (!entity || !target) return 0;
 
     const path = this.game.grid.findSmartPath(
@@ -332,36 +291,32 @@ export class MarauderAI extends AIBase {
     return steps;
   }
 
-  canShootWithWeapon(target, weaponName) {
-    return this.canShootTarget(
-      target,
-      weaponName
-    );
-  }
-
-  shootTargetLimited(target, maxShots = 1, weaponName = null) {
+  shootUntilNoAPWithWeapon(target, weaponName) {
     const entity = this.entity;
+
     if (!entity || !target) return 0;
 
     let shots = 0;
 
-    while (shots < maxShots) {
-      const selectedWeaponName = weaponName || this.chooseWeaponForTarget(target);
-
-      if (!this.canShootWithWeapon(target, selectedWeaponName)) {
-        break;
-      }
-
-      if (!this.shootTarget(target, selectedWeaponName)) {
+    while (this.canShootTarget(target, weaponName)) {
+      if (!this.shootTarget(target, weaponName)) {
         break;
       }
 
       shots++;
+
+      if (shots > 100) {
+        console.warn(
+          `[MarauderAI]: защита от бесконечного цикла стрельбы.`
+        );
+
+        break;
+      }
     }
 
     console.log(
       `[MarauderAI]: ${entity.name} сделал выстрелов: ${shots}. ` +
-      `weapon=${weaponName || 'auto'}, AP=${entity.currentAP}`
+      `weapon=${weaponName}, AP=${entity.currentAP}`
     );
 
     return shots;
@@ -369,6 +324,7 @@ export class MarauderAI extends AIBase {
 
   weightedRandom(items) {
     const total = items.reduce((sum, item) => sum + item[1], 0);
+
     let roll = Math.random() * total;
 
     for (const [value, weight] of items) {
