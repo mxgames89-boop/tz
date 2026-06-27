@@ -67,10 +67,6 @@ export class AIBase {
     };
   }
 
-  getWeapon(weaponName) {
-    return GAME_CONFIG.weapons[weaponName] || null;
-  }
-
   getDistance(q1, r1, q2, r2) {
     return this.game.grid.getHexDistance(
       Number(q1),
@@ -94,24 +90,135 @@ export class AIBase {
     );
   }
 
-  chooseWeaponByDistance(distance) {
-    const pm = this.getWeapon('pm');
-    const lasergun = this.getWeapon('lasergun');
-
-    if (pm && distance <= pm.maxRange) {
-      return 'pm';
-    }
-
-    if (lasergun) {
-      return 'lasergun';
-    }
-
-    return this.entity?.weapon || 'pm';
+  getWeapon(weaponName) {
+    return GAME_CONFIG.weapons[weaponName] || null;
   }
 
-  chooseWeaponForTarget(target, fromQ = null, fromR = null) {
+  getAvailableWeapons() {
+    const entity = this.entity;
+
+    let weaponNames = [];
+
+    if (Array.isArray(entity.weapons) && entity.weapons.length > 0) {
+      weaponNames = entity.weapons;
+    } else if (Array.isArray(entity.inventory?.weapons) && entity.inventory.weapons.length > 0) {
+      weaponNames = entity.inventory.weapons;
+    } else {
+      // Пока у сущности нет нормального инвентаря,
+      // считаем, что ИИ может пользоваться всем оружием из конфига.
+      weaponNames = Object.keys(GAME_CONFIG.weapons || {});
+    }
+
+    return weaponNames
+      .map(name => ({
+        name,
+        config: this.getWeapon(name)
+      }))
+      .filter(item => item.config);
+  }
+
+  getWeaponsInRange(distance, availableAP = null) {
+    const entity = this.entity;
+    const ap = availableAP !== null ? Number(availableAP) : Number(entity.currentAP);
+
+    return this.getAvailableWeapons().filter(item => {
+      const weapon = item.config;
+
+      return (
+        distance <= weapon.maxRange &&
+        ap >= weapon.apCost
+      );
+    });
+  }
+
+  getBestWeaponForDistance(distance, availableAP = null, style = 'balanced') {
+    const weapons = this.getWeaponsInRange(distance, availableAP);
+
+    if (weapons.length === 0) return null;
+
+    let best = null;
+    let bestScore = -Infinity;
+
+    for (const item of weapons) {
+      const weapon = item.config;
+
+      const damagePerAP = weapon.baseDamage / Math.max(1, weapon.apCost);
+      const accuracy = weapon.accuracy || 0.5;
+      const optimalRange = weapon.optimalRange || weapon.maxRange;
+      const maxRange = weapon.maxRange || 1;
+
+      const rangeComfort = 1 - Math.min(
+        1,
+        Math.abs(distance - optimalRange) / maxRange
+      );
+
+      let score =
+        damagePerAP * 50 +
+        accuracy * 40 +
+        rangeComfort * 35;
+
+      if (style === 'long') {
+        score += weapon.maxRange * 2;
+      }
+
+      if (style === 'close') {
+        score -= weapon.maxRange;
+        score += rangeComfort * 60;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+
+    return best;
+  }
+
+  getBestWeaponForTarget(target, style = 'balanced', fromQ = null, fromR = null, availableAP = null) {
     const distance = this.getDistanceToTarget(target, fromQ, fromR);
-    return this.chooseWeaponByDistance(distance);
+
+    return this.getBestWeaponForDistance(
+      distance,
+      availableAP,
+      style
+    );
+  }
+
+  getLongestRangeWeapon() {
+    const weapons = this.getAvailableWeapons();
+
+    if (weapons.length === 0) return null;
+
+    return weapons.reduce((best, item) => {
+      if (!best) return item;
+
+      return item.config.maxRange > best.config.maxRange
+        ? item
+        : best;
+    }, null);
+  }
+
+  getShortestRangeWeapon() {
+    const weapons = this.getAvailableWeapons();
+
+    if (weapons.length === 0) return null;
+
+    return weapons.reduce((best, item) => {
+      if (!best) return item;
+
+      return item.config.maxRange < best.config.maxRange
+        ? item
+        : best;
+    }, null);
+  }
+
+  getPreferredCloseWeapon() {
+    return this.getShortestRangeWeapon() || this.getBestWeaponForDistance(999999);
+  }
+
+  getPreferredLongWeapon() {
+    return this.getLongestRangeWeapon();
   }
 
   canShootTarget(target, weaponName = null, fromQ = null, fromR = null, availableAP = null) {
@@ -123,26 +230,54 @@ export class AIBase {
     const ap = availableAP !== null ? Number(availableAP) : Number(entity.currentAP);
 
     const distance = this.getDistanceToTarget(target, q, r);
-    const selectedWeaponName = weaponName || this.chooseWeaponByDistance(distance);
-    const weapon = this.getWeapon(selectedWeaponName);
 
-    if (!weapon) return false;
+    let weaponItem = null;
+
+    if (weaponName) {
+      const weapon = this.getWeapon(weaponName);
+      if (!weapon) return false;
+
+      weaponItem = {
+        name: weaponName,
+        config: weapon
+      };
+    } else {
+      weaponItem = this.getBestWeaponForDistance(distance, ap);
+    }
+
+    if (!weaponItem) return false;
+
+    const weapon = weaponItem.config;
+
     if (ap < weapon.apCost) return false;
 
     return distance <= weapon.maxRange;
   }
 
-  shootTarget(target, weaponName = null) {
+  shootTarget(target, weaponName = null, style = 'balanced') {
     const entity = this.entity;
     if (!entity || !target) return false;
 
-    const selectedWeaponName = weaponName || this.chooseWeaponForTarget(target);
-    const weapon = this.getWeapon(selectedWeaponName);
+    let weaponItem = null;
 
-    if (!weapon) return false;
-    if (!this.canShootTarget(target, selectedWeaponName)) return false;
+    if (weaponName) {
+      const weapon = this.getWeapon(weaponName);
+      if (!weapon) return false;
 
-    entity.weapon = selectedWeaponName;
+      weaponItem = {
+        name: weaponName,
+        config: weapon
+      };
+    } else {
+      weaponItem = this.getBestWeaponForTarget(target, style);
+    }
+
+    if (!weaponItem) return false;
+    if (!this.canShootTarget(target, weaponItem.name)) return false;
+
+    const weapon = weaponItem.config;
+
+    entity.weapon = weaponItem.name;
 
     entity.actionQueue.addShootAction(
       target.plannedQ,
@@ -157,25 +292,25 @@ export class AIBase {
 
     console.log(
       `[AI]: ${entity.name} стреляет из ${weapon.name} по ${target.name}. ` +
-      `AP=${entity.currentAP}`
+      `weapon=${weaponItem.name}, AP=${entity.currentAP}`
     );
 
     return true;
   }
 
-  shootTargetUntilNoAP(target) {
+  shootTargetUntilNoAP(target, style = 'balanced') {
     const entity = this.entity;
     if (!entity || !target) return 0;
 
     let shots = 0;
-    const maxShotsGuard = 50;
+    const maxShotsGuard = 100;
 
-    while (shots < maxShotsGuard && this.canShootTarget(target)) {
-      const weaponName = this.chooseWeaponForTarget(target);
+    while (shots < maxShotsGuard) {
+      const weaponItem = this.getBestWeaponForTarget(target, style);
 
-      if (!this.shootTarget(target, weaponName)) {
-        break;
-      }
+      if (!weaponItem) break;
+      if (!this.canShootTarget(target, weaponItem.name)) break;
+      if (!this.shootTarget(target, weaponItem.name, style)) break;
 
       shots++;
     }
@@ -223,7 +358,7 @@ export class AIBase {
     return steps;
   }
 
-  runTowardTargetUntilCanShoot(target) {
+  runTowardTargetUntilDistance(target, desiredDistance, reserveWeaponName = null) {
     const entity = this.entity;
     if (!entity || !target) return 0;
 
@@ -244,7 +379,14 @@ export class AIBase {
     entity.skin = 'run';
 
     for (const step of path) {
-      if (this.canShootTarget(target)) {
+      const currentDistance = this.getDistance(
+        entity.plannedQ,
+        entity.plannedR,
+        target.plannedQ,
+        target.plannedR
+      );
+
+      if (currentDistance <= desiredDistance) {
         break;
       }
 
@@ -263,13 +405,29 @@ export class AIBase {
         target.plannedR
       );
 
-      const weaponNameAfterStep = this.chooseWeaponByDistance(distanceAfterStep);
-      const weaponAfterStep = this.getWeapon(weaponNameAfterStep);
+      let reserveAP = 0;
 
-      const reserveAP =
-        weaponAfterStep && distanceAfterStep <= weaponAfterStep.maxRange
-          ? weaponAfterStep.apCost
-          : 0;
+      if (reserveWeaponName) {
+        const reserveWeapon = this.getWeapon(reserveWeaponName);
+
+        if (
+          reserveWeapon &&
+          distanceAfterStep <= reserveWeapon.maxRange
+        ) {
+          reserveAP = reserveWeapon.apCost;
+        }
+      } else {
+        const bestWeaponAfterStep = this.getBestWeaponForTarget(
+          target,
+          'balanced',
+          step.q,
+          step.r
+        );
+
+        if (bestWeaponAfterStep) {
+          reserveAP = bestWeaponAfterStep.config.apCost;
+        }
+      }
 
       const moved = this.runPath([step], target, reserveAP);
 
@@ -442,80 +600,5 @@ export class AIBase {
 
   key(q, r) {
     return `${Number(q)},${Number(r)}`;
-  }
-
-  runTowardTargetUntilDistance(target, desiredDistance) {
-    const entity = this.entity;
-    if (!entity || !target) return 0;
-
-    const path = this.game.grid.findSmartPath(
-      entity,
-      target.plannedQ,
-      target.plannedR
-    );
-
-    if (!path || path.length === 0) {
-      entity.lookAt(target.plannedQ, target.plannedR);
-      return 0;
-    }
-
-    let steps = 0;
-
-    entity.state = 'run';
-    entity.skin = 'run';
-
-    for (const step of path) {
-      const currentDistance = this.getDistance(
-        entity.plannedQ,
-        entity.plannedR,
-        target.plannedQ,
-        target.plannedR
-      );
-
-      // Уже подошли на нужную дистанцию.
-      if (currentDistance <= desiredDistance) {
-        break;
-      }
-
-      const isTargetCell =
-        Number(step.q) === Number(target.plannedQ) &&
-        Number(step.r) === Number(target.plannedR);
-
-      if (isTargetCell) {
-        break;
-      }
-
-      const distanceAfterStep = this.getDistance(
-        step.q,
-        step.r,
-        target.plannedQ,
-        target.plannedR
-      );
-
-      const weaponNameAfterStep = this.chooseWeaponByDistance(distanceAfterStep);
-      const weaponAfterStep = this.getWeapon(weaponNameAfterStep);
-
-      // Если после этого шага уже можно будет стрелять,
-      // оставляем AP хотя бы на 1 выстрел.
-      const reserveAP =
-        weaponAfterStep && distanceAfterStep <= weaponAfterStep.maxRange
-          ? weaponAfterStep.apCost
-          : 0;
-
-      const moved = this.runPath([step], target, reserveAP);
-
-      if (moved === 0) {
-        break;
-      }
-
-      steps += moved;
-    }
-
-    console.log(
-      `[AI]: ${entity.name} сближается до дистанции ${desiredDistance}. ` +
-      `Шагов: ${steps}, AP=${entity.currentAP}`
-    );
-
-    return steps;
   }
 }

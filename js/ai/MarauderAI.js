@@ -21,14 +21,32 @@ export class MarauderAI extends AIBase {
     const target = this.makeTarget(player);
     const entity = this.entity;
 
-    const pm = this.getWeapon('pm');
-    const pmRange = pm ? pm.maxRange : 12;
-    const pmOptimalRange = pm ? pm.optimalRange : 5;
+    const closeWeapon = this.getPreferredCloseWeapon();
+    const longWeapon = this.getPreferredLongWeapon();
+
+    if (!closeWeapon && !longWeapon) {
+      this.finishTurn(target);
+      return;
+    }
+
+    const closeRange = closeWeapon
+      ? closeWeapon.config.maxRange
+      : 8;
+
+    const closeOptimalRange = closeWeapon
+      ? closeWeapon.config.optimalRange || Math.ceil(closeWeapon.config.maxRange / 2)
+      : 4;
 
     const distance = this.getDistanceToTarget(target);
 
-    const canShootPM = this.canShootTarget(target, 'pm');
-    const canShootLaser = this.canShootTarget(target, 'lasergun');
+    const canShootAny = this.canShootTarget(target);
+    const canShootClose = closeWeapon
+      ? this.canShootTarget(target, closeWeapon.name)
+      : false;
+
+    const canShootLong = longWeapon
+      ? this.canShootTarget(target, longWeapon.name)
+      : false;
 
     const isInCover = this.isNearCover(
       entity.plannedQ,
@@ -37,36 +55,38 @@ export class MarauderAI extends AIBase {
 
     const tactic = this.chooseRandomTactic({
       distance,
-      pmRange,
-      canShootPM,
-      canShootLaser,
+      closeRange,
+      canShootAny,
+      canShootClose,
+      canShootLong,
       isInCover
     });
 
     console.log(
       `[MarauderAI]: ${entity.name} выбирает тактику: ${tactic}. ` +
-      `distance=${distance}, AP=${entity.currentAP}`
+      `distance=${distance}, AP=${entity.currentAP}, ` +
+      `closeWeapon=${closeWeapon?.name}, longWeapon=${longWeapon?.name}`
     );
 
     switch (tactic) {
-      case 'LASER_STAND':
-        this.tacticLaserStand(target);
+      case 'LONG_STAND':
+        this.tacticLongStand(target, longWeapon);
         break;
 
-      case 'RUSH_PM':
-        this.tacticRushPM(target, pmOptimalRange, pmRange);
+      case 'RUSH_CLOSE':
+        this.tacticRushClose(target, closeWeapon, closeOptimalRange, closeRange);
         break;
 
       case 'COVER_THEN_SHOOT':
         this.tacticCoverThenShoot(target);
         break;
 
-      case 'PM_ATTACK':
-        this.tacticPMAttack(target, pmOptimalRange, pmRange);
+      case 'CURRENT_ATTACK':
+        this.tacticCurrentAttack(target);
         break;
 
       default:
-        this.tacticRushPM(target, pmOptimalRange, pmRange);
+        this.tacticRushClose(target, closeWeapon, closeOptimalRange, closeRange);
         break;
     }
 
@@ -76,83 +96,99 @@ export class MarauderAI extends AIBase {
   chooseRandomTactic(context) {
     const {
       distance,
-      pmRange,
-      canShootPM,
-      canShootLaser,
+      closeRange,
+      canShootAny,
+      canShootClose,
+      canShootLong,
       isInCover
     } = context;
 
-    if (distance > pmRange) {
-      if (canShootLaser) {
+    if (distance > closeRange) {
+      if (canShootLong) {
         return this.weightedRandom([
-          ['LASER_STAND', 35],
-          ['RUSH_PM', 45],
+          ['LONG_STAND', 35],
+          ['RUSH_CLOSE', 45],
           ['COVER_THEN_SHOOT', 20]
         ]);
       }
 
       return this.weightedRandom([
-        ['RUSH_PM', 75],
+        ['RUSH_CLOSE', 75],
         ['COVER_THEN_SHOOT', 25]
       ]);
     }
 
-    if (canShootPM) {
+    if (canShootClose) {
       if (isInCover) {
         return this.weightedRandom([
-          ['PM_ATTACK', 75],
-          ['RUSH_PM', 15],
-          ['LASER_STAND', 10]
+          ['CURRENT_ATTACK', 75],
+          ['RUSH_CLOSE', 15],
+          ['LONG_STAND', 10]
         ]);
       }
 
       return this.weightedRandom([
-        ['PM_ATTACK', 55],
+        ['CURRENT_ATTACK', 55],
         ['COVER_THEN_SHOOT', 35],
-        ['LASER_STAND', 10]
+        ['LONG_STAND', 10]
+      ]);
+    }
+
+    if (canShootAny) {
+      return this.weightedRandom([
+        ['CURRENT_ATTACK', 50],
+        ['RUSH_CLOSE', 35],
+        ['COVER_THEN_SHOOT', 15]
       ]);
     }
 
     return this.weightedRandom([
-      ['RUSH_PM', 65],
-      ['COVER_THEN_SHOOT', 35]
+      ['RUSH_CLOSE', 70],
+      ['COVER_THEN_SHOOT', 30]
     ]);
   }
 
-  tacticLaserStand(target) {
-    if (!this.canShootTarget(target, 'lasergun')) {
-      this.tacticRushPM(target);
+  tacticLongStand(target, longWeapon) {
+    if (!longWeapon || !this.canShootTarget(target, longWeapon.name)) {
+      this.tacticCurrentAttack(target);
       return;
     }
 
     console.log(
-      `[MarauderAI]: ${this.entity.name} стреляет с места лазерной винтовкой.`
+      `[MarauderAI]: ${this.entity.name} стреляет с места дальним оружием: ${longWeapon.name}.`
     );
 
-    this.shootUntilNoAPWithWeapon(target, 'lasergun');
+    this.shootUntilNoAPWithWeapon(target, longWeapon.name);
   }
 
-  tacticRushPM(target, minDesiredRange = 5, maxDesiredRange = 12) {
+  tacticRushClose(target, closeWeapon, minDesiredRange = 4, maxDesiredRange = 8) {
+    if (!closeWeapon) {
+      this.tacticCurrentAttack(target);
+      return;
+    }
+
     const desiredRange = this.randomInt(
       Math.max(1, minDesiredRange),
       Math.max(1, maxDesiredRange)
     );
 
     console.log(
-      `[MarauderAI]: ${this.entity.name} сближается бегом под ПМ. ` +
+      `[MarauderAI]: ${this.entity.name} сближается под оружие ${closeWeapon.name}. ` +
       `Желаемая дистанция: ${desiredRange}`
     );
 
-    this.runTowardDistance(target, desiredRange, 'pm');
+    this.runTowardTargetUntilDistance(
+      target,
+      desiredRange,
+      closeWeapon.name
+    );
 
-    if (this.canShootTarget(target, 'pm')) {
-      this.shootUntilNoAPWithWeapon(target, 'pm');
+    if (this.canShootTarget(target, closeWeapon.name)) {
+      this.shootUntilNoAPWithWeapon(target, closeWeapon.name);
       return;
     }
 
-    if (this.canShootTarget(target, 'lasergun')) {
-      this.shootUntilNoAPWithWeapon(target, 'lasergun');
-    }
+    this.tacticCurrentAttack(target);
   }
 
   tacticCoverThenShoot(target) {
@@ -180,121 +216,25 @@ export class MarauderAI extends AIBase {
       );
     }
 
-    if (this.canShootTarget(target, 'pm')) {
-      this.shootUntilNoAPWithWeapon(target, 'pm');
-      return;
-    }
-
-    if (this.canShootTarget(target, 'lasergun')) {
-      this.shootUntilNoAPWithWeapon(target, 'lasergun');
-      return;
-    }
-
-    this.tacticRushPM(target);
+    this.tacticCurrentAttack(target);
   }
 
-  tacticPMAttack(target, pmOptimalRange = 5, pmRange = 12) {
-    if (this.chance(0.35)) {
-      const desiredRange = this.randomInt(
-        Math.max(1, pmOptimalRange),
-        Math.max(1, pmRange)
-      );
-
-      this.runTowardDistance(target, desiredRange, 'pm');
-    }
-
-    if (this.canShootTarget(target, 'pm')) {
-      this.shootUntilNoAPWithWeapon(target, 'pm');
+  tacticCurrentAttack(target) {
+    if (!this.canShootTarget(target)) {
       return;
-    }
-
-    if (this.canShootTarget(target, 'lasergun')) {
-      this.shootUntilNoAPWithWeapon(target, 'lasergun');
-    }
-  }
-
-  runTowardDistance(target, desiredDistance, reserveWeaponName = null) {
-    const entity = this.entity;
-
-    if (!entity || !target) return 0;
-
-    const path = this.game.grid.findSmartPath(
-      entity,
-      target.plannedQ,
-      target.plannedR
-    );
-
-    if (!path || path.length === 0) {
-      entity.lookAt(target.plannedQ, target.plannedR);
-      return 0;
-    }
-
-    let steps = 0;
-
-    entity.state = 'run';
-    entity.skin = 'run';
-
-    for (const step of path) {
-      const currentDistance = this.getDistance(
-        entity.plannedQ,
-        entity.plannedR,
-        target.plannedQ,
-        target.plannedR
-      );
-
-      if (currentDistance <= desiredDistance) {
-        break;
-      }
-
-      const isTargetCell =
-        Number(step.q) === Number(target.plannedQ) &&
-        Number(step.r) === Number(target.plannedR);
-
-      if (isTargetCell) {
-        break;
-      }
-
-      const distanceAfterStep = this.getDistance(
-        step.q,
-        step.r,
-        target.plannedQ,
-        target.plannedR
-      );
-
-      let reserveAP = 0;
-
-      if (reserveWeaponName) {
-        const reserveWeapon = this.getWeapon(reserveWeaponName);
-
-        if (
-          reserveWeapon &&
-          distanceAfterStep <= reserveWeapon.maxRange
-        ) {
-          reserveAP = reserveWeapon.apCost;
-        }
-      }
-
-      const moved = this.runPath([step], target, reserveAP);
-
-      if (moved === 0) {
-        break;
-      }
-
-      steps += moved;
     }
 
     console.log(
-      `[MarauderAI]: ${entity.name} пробежал шагов: ${steps}. ` +
-      `planned=${entity.plannedQ},${entity.plannedR}, AP=${entity.currentAP}`
+      `[MarauderAI]: ${this.entity.name} стреляет лучшим оружием для текущей дистанции.`
     );
 
-    return steps;
+    this.shootTargetUntilNoAP(target, 'balanced');
   }
 
   shootUntilNoAPWithWeapon(target, weaponName) {
     const entity = this.entity;
 
-    if (!entity || !target) return 0;
+    if (!entity || !target || !weaponName) return 0;
 
     let shots = 0;
 
@@ -336,10 +276,6 @@ export class MarauderAI extends AIBase {
     }
 
     return items[items.length - 1][0];
-  }
-
-  chance(probability) {
-    return Math.random() < probability;
   }
 
   randomInt(min, max) {
