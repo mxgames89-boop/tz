@@ -19,6 +19,17 @@ export class TurnManager {
         window.roundCount = 1;
         gameState = 'PLANNING';
         console.log("Фаза планирования. Раздайте приказы персонажам.");
+
+        audioManager.play('start_battle', 0.2);
+
+        const entitiesArray = window.entities;
+        const player = entitiesArray.find(e => e.type === 'player');
+
+        if(entitiesArray){
+            entitiesArray.forEach(entity => {
+                if(entity.type != 'player') entity.lookAt(player.q, player.r);
+            });
+        } 
     }
 
     //Вызывается при нажатии кнопки "ГОТОВ"
@@ -27,8 +38,6 @@ export class TurnManager {
         if(window.gameState !== 'PLANNING') return;
         
         this.ai.planAll();
-
-        audioManager.play('start_battle', 0.2);
 
         this.realSimulationStartTime = performance.now();
 
@@ -66,9 +75,7 @@ export class TurnManager {
 
         window.gameState = 'PLANNING';
 
-        const player = window.entities.find(e => e.type === 'player');
-        //player.weapon = 'pm';
-
+        this.removeDeadEntities();
         if(window.entities) window.entities.forEach(entity => {entity.resetPlannedState();});
 
         this.game.grid.plannedPath = []; 
@@ -81,5 +88,19 @@ export class TurnManager {
         if (currentUI && currentUI.consoleUI){
             currentUI.consoleUI.viewingRound = window.roundCount;
         }
+    }
+
+    removeDeadEntities() {
+      if(!window.entities) return;
+      
+      const player_death = window.entities.find(e => e.type === 'player' && e.hp <= 0);
+      if(player_death) return;
+
+      window.entities = window.entities.filter(entity => {
+        if(!entity) return false;
+        if(entity.hp > 0) return true;
+        if(entity.actionQueue && typeof entity.actionQueue.clear === 'function') entity.actionQueue.clear();
+        return false;
+      });
     }
 }
