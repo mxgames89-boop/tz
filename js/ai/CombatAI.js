@@ -318,11 +318,7 @@ export class CombatAI {
   }
 
   findFutureFlankPosition(bot, target, weaponConfig) {
-    let bestCover = null;
-    let bestCoverScore = Infinity;
-
-    let bestOpen = null;
-    let bestOpenScore = Infinity;
+    let best = null;
 
     for (const hex of this.game.grid.hexes) {
       const q = Number(hex.q);
@@ -363,62 +359,40 @@ export class CombatAI {
       const optimalRange = weaponConfig.optimalRange || weaponConfig.maxRange;
       const rangePenalty = Math.abs(distanceToTarget - optimalRange);
 
-      const baseScore =
-        path.length * 100 +
-        rangePenalty * 20 +
-        distanceToTarget * 5;
+      const candidate = {
+        q,
+        r,
+        path,
+        coverInfo,
+        isFutureFlank: true,
+        pathLength: path.length,
+        moveCost: path.length,
+        coverPower: coverInfo ? coverInfo.coverScore || 0 : 0,
+        distanceToTarget,
+        rangePenalty
+      };
 
-      if (coverInfo) {
-        const coverBonus = coverInfo.coverScore * 100;
-        const twoWayCoverBonus =
-          coverInfo.protectsBot && coverInfo.letsBotShootByStopRule
-            ? 1000
-            : 0;
-
-        const score = baseScore - coverBonus - twoWayCoverBonus;
-
-        if (score < bestCoverScore) {
-          bestCoverScore = score;
-          bestCover = {
-            q,
-            r,
-            path,
-            coverInfo,
-            isFutureFlank: true
-          };
-        }
-      } else {
-        const score = baseScore + 4000;
-
-        if (score < bestOpenScore) {
-          bestOpenScore = score;
-          bestOpen = {
-            q,
-            r,
-            path,
-            isFutureFlank: true
-          };
-        }
+      if (!best || this.isBetterFlankCandidate(candidate, best)) {
+        best = candidate;
       }
     }
 
-    if (bestCover) {
-      console.log(
-        `[CombatAI]: выбрана фланговая позиция в укрытии ` +
-        `${bestCover.q},${bestCover.r} за ${bestCover.coverInfo.object.type}.`
-      );
-
-      return bestCover;
+    if (best) {
+      if (best.coverInfo) {
+        console.log(
+          `[CombatAI]: выбрана ближайшая фланговая позиция в укрытии ` +
+          `${best.q},${best.r} за ${best.coverInfo.object.type}. ` +
+          `steps=${best.pathLength}`
+        );
+      } else {
+        console.log(
+          `[CombatAI]: укрытие на фланге не найдено, выбрана ближайшая открытая ` +
+          `фланговая позиция ${best.q},${best.r}. steps=${best.pathLength}`
+        );
+      }
     }
 
-    if (bestOpen) {
-      console.log(
-        `[CombatAI]: укрытие не найдено, выбрана открытая фланговая позиция ` +
-        `${bestOpen.q},${bestOpen.r}.`
-      );
-    }
-
-    return bestOpen;
+    return best;
   }
 
   getReachablePositionsWithPaths(bot, moveBudget) {
@@ -753,7 +727,7 @@ export class CombatAI {
 
     return null;
   }
-  
+
   getObjectAt(q, r) {
     return this.game.objectmap?.objects?.find(o =>
       Number(o.q) === Number(q) &&
@@ -811,11 +785,10 @@ export class CombatAI {
     const reachable = this.getReachablePositionsWithPaths(bot, moveBudget);
 
     let best = null;
-    let bestScore = Infinity;
 
     for (const position of reachable) {
-      // Не выбираем текущую клетку, если бот уже стоит в открытую.
-      if (position.path.length === 0) continue;
+      // Текущую клетку не считаем, потому что бот уже в открытую.
+      if (!position.path || position.path.length === 0) continue;
 
       const coverInfo = this.getCoverInfoAt(
         position.q,
@@ -826,14 +799,14 @@ export class CombatAI {
 
       if (!coverInfo) continue;
 
-      const distance = this.game.grid.getHexDistance(
+      const distanceToTarget = this.game.grid.getHexDistance(
         position.q,
         position.r,
         target.plannedQ,
         target.plannedR
       );
 
-      if (distance > weaponConfig.maxRange) continue;
+      if (distanceToTarget > weaponConfig.maxRange) continue;
 
       if (requireCanShoot) {
         const canShootFromCover = this.canShootGeometryFrom(
@@ -848,35 +821,85 @@ export class CombatAI {
       }
 
       const optimalRange = weaponConfig.optimalRange || weaponConfig.maxRange;
-      const rangePenalty = Math.abs(distance - optimalRange);
+      const rangePenalty = Math.abs(distanceToTarget - optimalRange);
 
-      // Чем меньше moveCost — тем лучше.
-      // Чем сильнее укрытие — тем лучше.
-      // Чем ближе к оптимальной дальности оружия — тем лучше.
-      const score =
-        position.moveCost * 1000 +
-        rangePenalty * 25 +
-        distance * 5 -
-        coverInfo.coverScore * 120;
+      const candidate = {
+        ...position,
+        coverInfo,
+        distanceToTarget,
+        rangePenalty,
+        pathLength: position.path.length,
+        coverPower: coverInfo.coverScore || 0
+      };
 
-      if (score < bestScore) {
-        bestScore = score;
-        best = {
-          ...position,
-          coverInfo
-        };
+      if (!best || this.isBetterCoverCandidate(candidate, best)) {
+        best = candidate;
       }
     }
 
     if (best) {
       console.log(
-        `[CombatAI]: найдена лучшая позиция в укрытии ` +
-        `${best.q},${best.r} за объектом ${best.coverInfo.object.type} ` +
+        `[CombatAI]: выбрано БЛИЖАЙШЕЕ укрытие для ${bot.name}: ` +
+        `${best.q},${best.r} за ${best.coverInfo.object.type} ` +
         `${best.coverInfo.coverQ},${best.coverInfo.coverR}. ` +
-        `moveCost=${best.moveCost}, coverScore=${best.coverInfo.coverScore}`
+        `moveCost=${best.moveCost}, steps=${best.pathLength}, ` +
+        `coverPower=${best.coverPower}`
       );
     }
 
     return best;
+  }
+
+  isBetterCoverCandidate(candidate, best) {
+    // 1. Самое главное — ближе к боту по AP.
+    if (candidate.moveCost !== best.moveCost) {
+      return candidate.moveCost < best.moveCost;
+    }
+
+    // 2. Если AP одинаковый — меньше шагов.
+    if (candidate.pathLength !== best.pathLength) {
+      return candidate.pathLength < best.pathLength;
+    }
+
+    // 3. Если одинаково близко — лучшее укрытие.
+    if (candidate.coverPower !== best.coverPower) {
+      return candidate.coverPower > best.coverPower;
+    }
+
+    // 4. Потом — удобнее дистанция оружия.
+    if (candidate.rangePenalty !== best.rangePenalty) {
+      return candidate.rangePenalty < best.rangePenalty;
+    }
+
+    // 5. И только в самом конце — чуть ближе к цели.
+    return candidate.distanceToTarget < best.distanceToTarget;
+  }
+
+  isBetterFlankCandidate(candidate, best) {
+    // 1. Сначала ближайший путь от бота.
+    if (candidate.pathLength !== best.pathLength) {
+      return candidate.pathLength < best.pathLength;
+    }
+
+    // 2. При одинаковой длине пути — позиция с укрытием лучше открытой.
+    const candidateHasCover = !!candidate.coverInfo;
+    const bestHasCover = !!best.coverInfo;
+
+    if (candidateHasCover !== bestHasCover) {
+      return candidateHasCover;
+    }
+
+    // 3. Если оба в укрытии — выбираем более сильное.
+    if (candidate.coverPower !== best.coverPower) {
+      return candidate.coverPower > best.coverPower;
+    }
+
+    // 4. Потом — удобнее дистанция оружия.
+    if (candidate.rangePenalty !== best.rangePenalty) {
+      return candidate.rangePenalty < best.rangePenalty;
+    }
+
+    // 5. И только потом ближе к цели.
+    return candidate.distanceToTarget < best.distanceToTarget;
   }
 }
