@@ -315,15 +315,25 @@ export class InputHandler {
         if (!player || gameState !== 'PLANNING') return;
         if (player.state != 'idle' && player.state != 'run') return;
 
-        if(this.isCtrlPressed){
-            const weaponConfig = GAME_CONFIG.weapons[player.weapon];
-            if (weaponConfig){
+        if (this.isCtrlPressed) {
+          const weaponConfig = GAME_CONFIG.weapons[player.weapon];
+
+          if (weaponConfig) {
+            const centerHex = this.game.grid.hexes.find(h =>
+              Number(h.q) === Number(player.plannedQ) &&
+              Number(h.r) === Number(player.plannedR)
+            );
+
+            if (centerHex) {
               this.game.grid.weaponRangeOutline = {
                 q: player.plannedQ,
                 r: player.plannedR,
+                x: centerHex.x,
+                y: centerHex.y,
                 range: weaponConfig.maxRange
               };
             }
+          }
         }
 
         // 1. Слой А: Считаем и рисуем зеленую зону доступности на ОСТАТОК AP игрока
@@ -392,35 +402,6 @@ export class InputHandler {
                 });
             }
         }
-    }
-
-    _addWeaponRangeHighlight(player){
-      if (!player) return;
-
-      const weaponConfig = GAME_CONFIG.weapons[player.weapon];
-
-      if (!weaponConfig) return;
-
-      const range = weaponConfig.maxRange;
-
-      this.game.grid.hexes.forEach(hex => {
-        const distance = this.game.grid.getHexDistance(
-          player.plannedQ,
-          player.plannedR,
-          hex.q,
-          hex.r
-        );
-
-        if(distance === range) {
-          this.game.grid.highlights.push({
-            q: hex.q,
-            r: hex.r,
-            x: hex.x,
-            y: hex.y,
-            type: 'weaponRange'
-          });
-        }
-      });
     }
 
     //УНИВЕРСАЛЬНЫЙ ОГРАНИЧИТЕЛЬ: Не дает камере выйти за рамки карты с учетом текущего зума
