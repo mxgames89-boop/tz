@@ -173,18 +173,21 @@ export class TurnSimulator {
         }
 
         //Проверяем дистанцию стрельбы
-        const fullDistance = this.game.grid.getHexDistance(startQ, startR, targetQ, targetR);
+        const fullDistance = this.game.grid.getShootDistance(startQ, startR, targetQ, targetR);
 
         //ЗАПУСКАЕМ ТРАССИРОВКУ ЛУЧА ПУЛИ КЛЕТКА ЗА КЛЕТКОЙ
         let bulletRay = this.game.grid.traceBulletRay(startQ, startR, targetQ, targetR);
+        const limitedBulletRay = this.game.grid.limitBulletRayByShootRange(startQ, startR, bulletRay, weaponConfig.maxRange);
 
-        if (bulletRay.length > weaponConfig.maxRange) {
-            bulletRay = bulletRay.slice(0, weaponConfig.maxRange);
-            const lastValidHex = bulletRay[bulletRay.length - 1];
-            if (lastValidHex){
-                targetQ = lastValidHex.q;
-                targetR = lastValidHex.r;
-            }
+        if(limitedBulletRay.length < bulletRay.length){
+          bulletRay = limitedBulletRay;
+
+          const lastValidHex = bulletRay[bulletRay.length - 1];
+
+          if (lastValidHex) {
+            targetQ = lastValidHex.q;
+            targetR = lastValidHex.r;
+          }
         }
 
         let finalTargetQ = targetQ;
@@ -203,7 +206,7 @@ export class TurnSimulator {
             const obstacle = this.game.objectmap.objects.find(o =>  Number(o.q) === Number(currentHex.q) &&  Number(o.r) === Number(currentHex.r));
             
             if(obstacle && obstacle.virtualHp > 0){
-                distanceToHit = this.game.grid.getHexDistance(startQ, startR, currentHex.q, currentHex.r);
+                distanceToHit = this.game.grid.getShootDistance(startQ, startR, currentHex.q, currentHex.r);
 
                 if(distanceToHit <= 1 && obstacle.passability != 100) {
                     console.log(`[TurnSimulator]: Стрелок вплотную к объекту (${currentHex.q},${currentHex.r}). Пуля пролетает насквозь по правилу упора.`);
@@ -228,7 +231,7 @@ export class TurnSimulator {
                 finalTargetQ = currentHex.q;
                 finalTargetR = currentHex.r;
                 hitEntity = foundUnit;
-                distanceToHit = this.game.grid.getHexDistance(startQ, startR, currentHex.q, currentHex.r);
+                distanceToHit = this.game.grid.getShootDistance(startQ, startR, currentHex.q, currentHex.r);
                 break; // Пуля попала в живое существо и остановилась!
             }
         }
