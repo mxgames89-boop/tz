@@ -13,6 +13,7 @@ export class InputHandler {
         this.isDraggingCamera = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
+        this.isCtrlPressed = false;
 
         // Теперь привязка событий сработает без ошибок
         this._initEvents(); 
@@ -26,11 +27,19 @@ export class InputHandler {
         this.canvas.addEventListener('click', (e) => this._onMouseClick(e));
 
         window.addEventListener('keydown', (e) => {
-            if(e.key === 'Control') Library.setCursor(this.canvas, 'aim');
+          if (e.key === 'Control') {
+            this.isCtrlPressed = true;
+            Library.setCursor(this.canvas, 'aim');
+            this._updateGridHighlights();
+          }
         });
 
         window.addEventListener('keyup', (e) => {
-            if(e.key === 'Control') Library.setCursor(this.canvas, 'default');
+          if (e.key === 'Control') {
+            this.isCtrlPressed = false;
+            Library.setCursor(this.canvas, 'default');
+            this._updateGridHighlights();
+          }
         });
 
         // Зажатие кнопки мыши
@@ -108,7 +117,7 @@ export class InputHandler {
             });
 
             if(isHoveringAnyButton) Library.setCursor(this.canvas, 'pointer');
-            else if(event.ctrlKey) Library.setCursor(this.canvas, 'aim');
+            else if(this.isCtrlPressed) Library.setCursor(this.canvas, 'aim');
             else Library.setCursor(this.canvas, 'default');
 
             // Барьер наведения: если мышь над UI, стираем hoveredHex и выходим
@@ -305,6 +314,8 @@ export class InputHandler {
         if (!player || gameState !== 'PLANNING') return;
         if (player.state != 'idle' && player.state != 'run') return;
 
+        if(this.isCtrlPressed) this._addWeaponRangeHighlight(player);
+
         // 1. Слой А: Считаем и рисуем зеленую зону доступности на ОСТАТОК AP игрока
         const reachableZone = this.game.grid.getReachableZone(player);
 
@@ -371,6 +382,35 @@ export class InputHandler {
                 });
             }
         }
+    }
+
+    _addWeaponRangeHighlight(player){
+      if (!player) return;
+
+      const weaponConfig = GAME_CONFIG.weapons[player.weapon];
+
+      if (!weaponConfig) return;
+
+      const range = weaponConfig.maxRange;
+
+      this.game.grid.hexes.forEach(hex => {
+        const distance = this.game.grid.getHexDistance(
+          player.plannedQ,
+          player.plannedR,
+          hex.q,
+          hex.r
+        );
+
+        if(distance === range) {
+          this.game.grid.highlights.push({
+            q: hex.q,
+            r: hex.r,
+            x: hex.x,
+            y: hex.y,
+            type: 'weaponRange'
+          });
+        }
+      });
     }
 
     //УНИВЕРСАЛЬНЫЙ ОГРАНИЧИТЕЛЬ: Не дает камере выйти за рамки карты с учетом текущего зума
