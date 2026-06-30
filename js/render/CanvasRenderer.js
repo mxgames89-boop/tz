@@ -130,46 +130,83 @@ export class CanvasRenderer {
 
       if (!outline) return;
 
-      const centerQ = Number(outline.q);
-      const centerR = Number(outline.r);
       const range = Number(outline.range);
 
-      if (range <= 0) return;
+      if (!range || range <= 0) return;
 
-      // 6 направлений для axial hex grid
-      const directions = [
-        { q: 1,  r: 0 },
-        { q: 1,  r: -1 },
-        { q: 0,  r: -1 },
-        { q: -1, r: 0 },
-        { q: -1, r: 1 },
-        { q: 0,  r: 1 }
+      let centerX = Number(outline.x);
+      let centerY = Number(outline.y);
+
+      if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) {
+        const centerHex = this.scene.grid.hexes.find(h =>
+          Number(h.q) === Number(outline.q) &&
+          Number(h.r) === Number(outline.r)
+        );
+
+        if (!centerHex) return;
+
+        centerX = centerHex.x;
+        centerY = centerHex.y;
+      }
+
+      const hexWidth = Math.sqrt(3) * this.hexRadius;
+      const verticalStep = 1.5 * this.hexRadius * this.isoYScale;
+
+      // Смещение от центра крайнего гекса до его внешнего края.
+      const edgeOffsetX = hexWidth / 2;
+      const edgeOffsetY = this.hexRadius * this.isoYScale;
+
+      const points = [
+        // Правый угол
+        {
+          x: centerX + hexWidth * range + edgeOffsetX,
+          y: centerY
+        },
+
+        // Нижний правый угол
+        {
+          x: centerX + (hexWidth / 2) * range,
+          y: centerY + verticalStep * range + edgeOffsetY
+        },
+
+        // Нижний левый угол
+        {
+          x: centerX - (hexWidth / 2) * range,
+          y: centerY + verticalStep * range + edgeOffsetY
+        },
+
+        // Левый угол
+        {
+          x: centerX - hexWidth * range - edgeOffsetX,
+          y: centerY
+        },
+
+        // Верхний левый угол
+        {
+          x: centerX - (hexWidth / 2) * range,
+          y: centerY - verticalStep * range - edgeOffsetY
+        },
+
+        // Верхний правый угол
+        {
+          x: centerX + (hexWidth / 2) * range,
+          y: centerY - verticalStep * range - edgeOffsetY
+        }
       ];
 
-      const corners = directions.map(dir => {
-        const q = centerQ + dir.q * range;
-        const r = centerR + dir.r * range;
-
-        return this.scene.grid.hexes.find(h =>
-          Number(h.q) === q && Number(h.r) === r
-        );
-      });
-
-      if (corners.some(corner => !corner)) return;
-
       this.ctx.save();
+
       this.ctx.beginPath();
+      this.ctx.moveTo(points[0].x, points[0].y);
 
-      this.ctx.strokeStyle = 'rgba(0, 140, 255, 0.95)';
-      this.ctx.lineWidth = 2;
-
-      this.ctx.moveTo(corners[0].x, corners[0].y);
-
-      for (let i = 1; i < corners.length; i++) {
-        this.ctx.lineTo(corners[i].x, corners[i].y);
+      for (let i = 1; i < points.length; i++) {
+        this.ctx.lineTo(points[i].x, points[i].y);
       }
 
       this.ctx.closePath();
+
+      this.ctx.strokeStyle = 'rgba(0, 140, 255, 0.95)';
+      this.ctx.lineWidth = 2;
       this.ctx.stroke();
 
       this.ctx.restore();
