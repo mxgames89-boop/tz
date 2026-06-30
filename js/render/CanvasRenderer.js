@@ -92,6 +92,14 @@ export class CanvasRenderer {
             const padding = 4; // Зазор в пикселях между ячейками. Можете менять от 2 до 5
             this._defineHexPath(hl.x, hl.y, this.hexRadius - padding);
 
+            if(hl.type === 'weaponRange'){
+                this.ctx.strokeStyle = 'rgba(0, 130, 255, 0.95)';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                this.ctx.restore();
+                return;
+            }
+
             // Назначаем полупрозрачный цвет из вашей конфигурации
             if (hl.type === 'moveRange')   this.ctx.fillStyle = this.colors.moveRangeHighlight;
             if (hl.type === 'attackRange') this.ctx.fillStyle = this.colors.attackRangeHighlight;
