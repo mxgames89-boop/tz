@@ -259,4 +259,59 @@ export class HexGrid {
 
         return closestHex; // Возвращает объект гекса {q, r, x, y} или null
     }
+
+    // Перевод odd-r offset координат в cube координаты.
+    // У тебя именно odd-r, потому что нечётные строки r % 2 !== 0 сдвигаются вправо.
+    offsetToCube(q, r) {
+      const col = Number(q);
+      const row = Number(r);
+
+      const x = col - ((row - (row & 1)) / 2);
+      const z = row;
+      const y = -x - z;
+
+      return { x, y, z };
+    }
+
+    // Универсальная дальность для стрельбы по hex-сетке.
+    // Это НЕ пеший маршрут и НЕ поиск пути.
+    // Это геометрическая дистанция между гексами.
+    getShootDistance(q1, r1, q2, r2) {
+      const a = this.offsetToCube(q1, r1);
+      const b = this.offsetToCube(q2, r2);
+
+      return Math.max(
+        Math.abs(a.x - b.x),
+        Math.abs(a.y - b.y),
+        Math.abs(a.z - b.z)
+      );
+    }
+
+    // Проверка: находится ли цель в дальности оружия.
+    isInShootRange(q1, r1, q2, r2, range) {
+      return this.getShootDistance(q1, r1, q2, r2) <= Number(range);
+    }
+
+    // Ограничивает луч пули по правильной дальности стрельбы.
+    // Это нужно вместо bulletRay.length > weaponConfig.maxRange.
+    limitBulletRayByShootRange(startQ, startR, bulletRay, maxRange) {
+      const limitedRay = [];
+
+      for (const hex of bulletRay) {
+        const distance = this.getShootDistance(
+          startQ,
+          startR,
+          hex.q,
+          hex.r
+        );
+
+        if (distance > maxRange) {
+          break;
+        }
+
+        limitedRay.push(hex);
+      }
+
+      return limitedRay;
+    }
 }
