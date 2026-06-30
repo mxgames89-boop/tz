@@ -307,6 +307,7 @@ export class InputHandler {
     _updateGridHighlights() {
         // Полностью очищаем массив тактической подсветки перед перерасчетом кадра
         this.game.grid.highlights = [];
+        this.game.grid.weaponRangeOutline = null;
 
         const entitiesArray = window.entities;
         const player = entitiesArray ? entitiesArray.find(e => e.type === 'player') : null;
@@ -314,7 +315,16 @@ export class InputHandler {
         if (!player || gameState !== 'PLANNING') return;
         if (player.state != 'idle' && player.state != 'run') return;
 
-        if(this.isCtrlPressed) this._addWeaponRangeHighlight(player);
+        if(this.isCtrlPressed){
+            const weaponConfig = GAME_CONFIG.weapons[player.weapon];
+            if (weaponConfig){
+              this.game.grid.weaponRangeOutline = {
+                q: player.plannedQ,
+                r: player.plannedR,
+                range: weaponConfig.maxRange
+              };
+            }
+        }
 
         // 1. Слой А: Считаем и рисуем зеленую зону доступности на ОСТАТОК AP игрока
         const reachableZone = this.game.grid.getReachableZone(player);
