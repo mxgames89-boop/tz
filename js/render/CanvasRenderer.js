@@ -37,6 +37,7 @@ export class CanvasRenderer {
         
         // --- СЛОЙ 2: Подсветка тактической сетки (Зоны хода, атаки, курсор) ---
         this._drawGridHighlights();
+        this._drawWeaponRangeOutline();
 
         // --- СЛОЙ 3: Динамическая Y-сортировка (Стены, окна, деревья, персонажи) ---
         this._drawDepthSortedObjects();
@@ -92,14 +93,6 @@ export class CanvasRenderer {
             const padding = 4; // Зазор в пикселях между ячейками. Можете менять от 2 до 5
             this._defineHexPath(hl.x, hl.y, this.hexRadius - padding);
 
-            if(hl.type === 'weaponRange'){
-                this.ctx.strokeStyle = 'rgba(0, 130, 255, 0.95)';
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
-                this.ctx.restore();
-                return;
-            }
-
             // Назначаем полупрозрачный цвет из вашей конфигурации
             if (hl.type === 'moveRange')   this.ctx.fillStyle = this.colors.moveRangeHighlight;
             if (hl.type === 'attackRange') this.ctx.fillStyle = this.colors.attackRangeHighlight;
@@ -130,6 +123,56 @@ export class CanvasRenderer {
                 this.ctx.restore();
             }
         });
+    }
+
+    _drawWeaponRangeOutline() {
+      const outline = this.scene.grid.weaponRangeOutline;
+
+      if (!outline) return;
+
+      const centerQ = Number(outline.q);
+      const centerR = Number(outline.r);
+      const range = Number(outline.range);
+
+      if (range <= 0) return;
+
+      // 6 направлений для axial hex grid
+      const directions = [
+        { q: 1,  r: 0 },
+        { q: 1,  r: -1 },
+        { q: 0,  r: -1 },
+        { q: -1, r: 0 },
+        { q: -1, r: 1 },
+        { q: 0,  r: 1 }
+      ];
+
+      const corners = directions.map(dir => {
+        const q = centerQ + dir.q * range;
+        const r = centerR + dir.r * range;
+
+        return this.scene.grid.hexes.find(h =>
+          Number(h.q) === q && Number(h.r) === r
+        );
+      });
+
+      if (corners.some(corner => !corner)) return;
+
+      this.ctx.save();
+      this.ctx.beginPath();
+
+      this.ctx.strokeStyle = 'rgba(0, 140, 255, 0.95)';
+      this.ctx.lineWidth = 2;
+
+      this.ctx.moveTo(corners[0].x, corners[0].y);
+
+      for (let i = 1; i < corners.length; i++) {
+        this.ctx.lineTo(corners[i].x, corners[i].y);
+      }
+
+      this.ctx.closePath();
+      this.ctx.stroke();
+
+      this.ctx.restore();
     }
 
 
