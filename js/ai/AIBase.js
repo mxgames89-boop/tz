@@ -90,6 +90,29 @@ export class AIBase {
     );
   }
 
+  getShootDistance(q1, r1, q2, r2) {
+    return this.game.grid.getShootDistance(
+      Number(q1),
+      Number(r1),
+      Number(q2),
+      Number(r2)
+    );
+  }
+
+  getShootDistanceToTarget(target, fromQ = null, fromR = null) {
+    const entity = this.entity;
+
+    const q = fromQ !== null ? Number(fromQ) : Number(entity.plannedQ);
+    const r = fromR !== null ? Number(fromR) : Number(entity.plannedR);
+
+    return this.getShootDistance(
+      q,
+      r,
+      target.plannedQ,
+      target.plannedR
+    );
+  }
+
   getWeapon(weaponName) {
     return GAME_CONFIG.weapons[weaponName] || null;
   }
@@ -176,7 +199,7 @@ export class AIBase {
   }
 
   getBestWeaponForTarget(target, style = 'balanced', fromQ = null, fromR = null, availableAP = null) {
-    const distance = this.getDistanceToTarget(target, fromQ, fromR);
+    const distance = this.getShootDistanceToTarget(target, fromQ, fromR);
 
     return this.getBestWeaponForDistance(
       distance,
@@ -229,7 +252,7 @@ export class AIBase {
     const r = fromR !== null ? Number(fromR) : Number(entity.plannedR);
     const ap = availableAP !== null ? Number(availableAP) : Number(entity.currentAP);
 
-    const distance = this.getDistanceToTarget(target, q, r);
+    const distance = this.getShootDistanceToTarget(target, q, r);
 
     let weaponItem = null;
 
