@@ -1,5 +1,6 @@
 import { GAME_CONFIG } from '../config.js';
 import { battleRecorder } from '../core/BattleRecorder.js';
+import { Library } from '../utils/Library.js';
 
 export class InputHandler {
     /**
@@ -25,11 +26,11 @@ export class InputHandler {
         this.canvas.addEventListener('click', (e) => this._onMouseClick(e));
 
         window.addEventListener('keydown', (e) => {
-            if(e.key === 'Control') this.canvas.style.cursor = 'crosshair';
+            if(e.key === 'Control') Library.setCursor(this.canvas, 'aim');
         });
 
         window.addEventListener('keyup', (e) => {
-            if(e.key === 'Control') this.canvas.style.cursor = 'default';
+            if(e.key === 'Control') Library.setCursor(this.canvas, 'default');
         });
 
         // Зажатие кнопки мыши
@@ -106,9 +107,9 @@ export class InputHandler {
                 if(isMouseOverThisButton && !btn.checked) isHoveringAnyButton = true;
             });
 
-            if(isHoveringAnyButton) this.canvas.style.cursor = 'pointer';
-            else if(event.ctrlKey)  this.canvas.style.cursor = 'crosshair';
-            else this.canvas.style.cursor = 'default';
+            if(isHoveringAnyButton) Library.setCursor(this.canvas, 'pointer');
+            else if(event.ctrlKey) Library.setCursor(this.canvas, 'aim');
+            else Library.setCursor(this.canvas, 'default');
 
             // Барьер наведения: если мышь над UI, стираем hoveredHex и выходим
             if (ui.isMouseOverUi(mouseX, mouseY)) {
@@ -123,6 +124,11 @@ export class InputHandler {
         const worldMouseY = (mouseY + (scene ? scene.cameraY : 0)) / currentZoom;
 
         if (isNaN(worldMouseX) || isNaN(worldMouseY)) return;
+
+        if(window.entities){
+            const clickedUnit = window.entities.find(e => e.type !== 'player' && e.isMouseOverBody(worldMouseX, worldMouseY));
+            if(clickedUnit) Library.setCursor(this.canvas, 'aim');
+        }
 
         // А вот гексы карты ищем по мировым координатам
         const closestHex = this.game.grid._getHexUnderMouse(worldMouseX, worldMouseY);
