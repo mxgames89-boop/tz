@@ -1,0 +1,8 @@
+import { texture } from '../../paths.js';
+
+export const TILES_SPRITES = {
+  ground_ground: { url:  texture('ground/1.jpg'), type: 'static' },
+  ground_grass: { url: texture('ground/2.jpg'), type: 'static' },
+  ground_sand: { url: texture('ground/3.jpg'), type: 'static' },
+  ground_sand2: { url: texture('ground/4.jpg'), type: 'static' }
+};
