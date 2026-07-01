@@ -43,7 +43,7 @@ export class CanvasRenderer {
         this._drawDepthSortedObjects();
 
         //Эффекты боя
-        effectRenderer.renderAndUpdate(this.ctx);
+        effectRenderer.renderOverlayEffects(this.ctx);
 
         //this.ctx.restore(); 
 
@@ -218,36 +218,67 @@ export class CanvasRenderer {
      * Стены, окна, декорации и все персонажи собираются в одну очередь
      */
     _drawDepthSortedObjects() {
+      // Сначала обновляем эффекты один раз за кадр.
+      // Потом добавляем их в renderQueue уже с актуальной позицией.
+      effectRenderer.update();
 
-        // Создаем плоский массив и складываем туда все статические объекты карты
-        const renderQueue = [...this.scene.objectmap.objects];
+      const renderQueue = [
+        ...this.scene.objectmap.objects,
+        ...effectRenderer.getDepthSortedItems()
+      ];
 
-        // Добавляем в очередь живых существ (игрока и мобов), если они созданы
-        if(window.entities){
-           window.entities.forEach(entity => renderQueue.push(entity));
+      if (window.entities) {
+        window.entities.forEach(entity => renderQueue.push(entity));
+      }
+
+      const getDepthY = (obj) => {
+        if (obj.renderType === 'effect') {
+          return obj.y;
         }
 
-        // Ключевой шаг: сортируем абсолютно ВСЁ сверху вниз по экрану
-        renderQueue.sort((a, b) => {
-            const yA = (a instanceof Entity && window.gameState === 'PLANNING') ? a.plannedY : a.y;
-            const yB = (b instanceof Entity && window.gameState === 'PLANNING') ? b.plannedY : b.y;
-            return yA - yB;
-        });
+        if (obj instanceof Entity && window.gameState === 'PLANNING') {
+          return obj.plannedY;
+        }
 
-        // Сначало рисуем тень объектов
-        renderQueue.forEach(obj => {
-            if(obj instanceof Entity) this.drawEntetyShadow(obj);
-            else this.drawPngWithLongShadow(obj);
-        });
+        return obj.y;
+      };
 
-        // Отрисовываем каждый объект из упорядоченной очереди
-        renderQueue.forEach(obj => {
-            if(obj instanceof Entity){   
-                if(window.gameState === 'PLANNING' && obj.type === 'player') obj.draw(this.ctx, obj.plannedX, obj.plannedY);
-                else obj.draw(this.ctx, obj.x, obj.y);
-            }
-            else this._drawStaticObject(obj);
-        });
+      renderQueue.sort((a, b) => {
+        return getDepthY(a) - getDepthY(b);
+      });
+
+      // Сначала рисуем тени объектов.
+      // Эффектам тени не нужны.
+      renderQueue.forEach(obj => {
+        if (obj.renderType === 'effect') return;
+
+        if (obj instanceof Entity) {
+          this.drawEntetyShadow(obj);
+        } else {
+          this.drawPngWithLongShadow(obj);
+        }
+      });
+
+      // Потом рисуем сами объекты, персонажей и эффекты
+      // в одной общей Y-сортировке.
+      renderQueue.forEach(obj => {
+        if (obj.renderType === 'effect') {
+          effectRenderer.drawEffect(this.ctx, obj.effect);
+          return;
+        }
+
+        if (obj instanceof Entity) {
+          if (window.gameState === 'PLANNING' && obj.type === 'player') {
+            obj.draw(this.ctx, obj.plannedX, obj.plannedY);
+          } else {
+            obj.draw(this.ctx, obj.x, obj.y);
+          }
+
+          return;
+        }
+
+        this._drawStaticObject(obj);
+      });
     }
 
     //Внутренний метод для отрисовки стен (с автотайлингом/поворотами) и декора

@@ -102,23 +102,19 @@ export class TurnSimulator {
     getTickCost(type, coefficient, i, state, ap = 1){
         let cost = 0;
         let costAction = 0;
+        const frame = (window.entities.length > 4) ? 4 : window.entities.length;
 
-        if(type == 'move'){
-            if(state == 'run') cost = 17;
-            if(state == 'idle') cost = 34;
-        } 
-        if(type == 'change') cost = 17;
-        if(type == 'shoot') cost = 3 * ap;
+        costAction = frame * ap;
 
-        //if(i == 0){
-            //if(type == 'move'){
-               // if(coefficient < 1) cost = costAction - costAction * coefficient;
-                //return cost;
-           // }
-      //  }
+        if(i == 0){
+            if(type == 'move'){
+                if(coefficient < 1) cost = costAction - costAction * coefficient;
+                return cost;
+           }
+        }
 
-        //if(coefficient < 1) cost = costAction + costAction * coefficient;
-       // else cost = costAction / coefficient;
+        if(coefficient < 1) cost = costAction + costAction * coefficient;
+        else cost = costAction / coefficient;
 
         return cost;
     }
@@ -176,7 +172,7 @@ export class TurnSimulator {
         const fullDistance = this.game.grid.getShootDistance(startQ, startR, targetQ, targetR);
 
         //ЗАПУСКАЕМ ТРАССИРОВКУ ЛУЧА ПУЛИ КЛЕТКА ЗА КЛЕТКОЙ
-        let bulletRay = this.game.grid.traceBulletRay(startQ, startR, targetQ, targetR);
+        let bulletRay = this.game.grid.traceShootRay(startQ, startR, targetQ, targetR);
         const limitedBulletRay = this.game.grid.limitBulletRayByShootRange(startQ, startR, bulletRay, weaponConfig.maxRange);
 
         if(limitedBulletRay.length < bulletRay.length){
@@ -227,7 +223,7 @@ export class TurnSimulator {
             //Проверяем, не пробегает ли пуля через виртуальное тело ЛЮБОГО персонажа в памяти
             const foundUnit = entities.find(e =>  e.id !== entity.id && Number(e.virtualQ) === Number(currentHex.q) &&  Number(e.virtualR) === Number(currentHex.r) && e.hp > 0);
 
-            if(foundUnit){
+            if(foundUnit && foundUnit.virtualHp > 0){
                 finalTargetQ = currentHex.q;
                 finalTargetR = currentHex.r;
                 hitEntity = foundUnit;

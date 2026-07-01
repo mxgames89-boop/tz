@@ -14,6 +14,7 @@ export class InputHandler {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.isCtrlPressed = false;
+        this.moveEnemy = false;
 
         // Теперь привязка событий сработает без ошибок
         this._initEvents(); 
@@ -30,6 +31,7 @@ export class InputHandler {
           if (e.key === 'Control') {
             this.isCtrlPressed = true;
             Library.setCursor(this.canvas, 'aim');
+            this._updateRangeShootHighlights();
             this._updateGridHighlights();
           }
         });
@@ -38,6 +40,7 @@ export class InputHandler {
           if (e.key === 'Control') {
             this.isCtrlPressed = false;
             Library.setCursor(this.canvas, 'default');
+            this._updateRangeShootHighlights();
             this._updateGridHighlights();
           }
         });
@@ -136,7 +139,13 @@ export class InputHandler {
 
         if(window.entities){
             const clickedUnit = window.entities.find(e => e.type !== 'player' && e.isMouseOverBody(worldMouseX, worldMouseY));
-            if(clickedUnit) Library.setCursor(this.canvas, 'aim');
+            if(clickedUnit){
+                Library.setCursor(this.canvas, 'aim');
+                this.moveEnemy = true;
+            }else{
+                this.moveEnemy = false;
+            }
+            this._updateRangeShootHighlights();
         }
 
         // А вот гексы карты ищем по мировым координатам
@@ -303,19 +312,15 @@ export class InputHandler {
         this._updateGridHighlights();
     }
 
-    //Синхронизирует подсвеченные зоны с массивом рендеринга в CanvasRenderer
-    _updateGridHighlights() {
-        // Полностью очищаем массив тактической подсветки перед перерасчетом кадра
-        this.game.grid.highlights = [];
+    _updateRangeShootHighlights(){
         this.game.grid.weaponRangeOutline = null;
 
         const entitiesArray = window.entities;
         const player = entitiesArray ? entitiesArray.find(e => e.type === 'player') : null;
         
         if (!player || gameState !== 'PLANNING') return;
-        if (player.state != 'idle' && player.state != 'run') return;
 
-        if (this.isCtrlPressed) {
+        if(this.isCtrlPressed || this.moveEnemy){
           const weaponConfig = GAME_CONFIG.weapons[player.weapon];
 
           if (weaponConfig) {
@@ -330,11 +335,23 @@ export class InputHandler {
                 r: player.plannedR,
                 x: centerHex.x,
                 y: centerHex.y,
-                range: weaponConfig.maxRange
+                range: weaponConfig.optimalRange
               };
             }
           }
         }
+    }
+
+    //Синхронизирует подсвеченные зоны с массивом рендеринга в CanvasRenderer
+    _updateGridHighlights() {
+        // Полностью очищаем массив тактической подсветки перед перерасчетом кадра
+        this.game.grid.highlights = [];
+
+        const entitiesArray = window.entities;
+        const player = entitiesArray ? entitiesArray.find(e => e.type === 'player') : null;
+        
+        if (!player || gameState !== 'PLANNING') return;
+        if (player.state != 'idle' && player.state != 'run') return;
 
         // 1. Слой А: Считаем и рисуем зеленую зону доступности на ОСТАТОК AP игрока
         const reachableZone = this.game.grid.getReachableZone(player);
@@ -349,6 +366,8 @@ export class InputHandler {
                 });
             }
         });
+
+        if(this.isCtrlPressed || this.moveEnemy) return;
 
         // 2. Слой Б: Рисуем ЖЕСТКО ЗАФИКСИРОВАННЫЙ путь, который игрок уже накликал
         if (this.game.grid.plannedPath && this.game.grid.plannedPath.length > 0) {

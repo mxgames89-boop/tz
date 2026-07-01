@@ -9,8 +9,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         await audioManager.loadAll();
         const game = new Game('gameCanvas');
 
-        //const asset = textureManager.get('player_crawl_laser_NE');
-        //libFunc.saveShadowToFile(asset.element, 'player_crawl_laser_ne');
+        //const asset = textureManager.get('player_idle_pistol_NE');
+        //libFunc.saveShadowToFile(asset.element, 'player_idle_pistol_ne');
         //libFunc.convertPngToWebpAndDownload(asset.element, 'player_run_se_shadow');
 
         game.start();

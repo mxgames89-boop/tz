@@ -29,21 +29,21 @@ export const GAME_CONFIG = {
     entities:{
         player: {
             maxHp: 800,
-            maxAp: 380, // Максимум Очков Действия (Action Points)
-            CostAP: {'idle':2, 'run':1, 'crawl':4},  // Сколько AP стоит шаг на 1 гекс
-            shootCostAP: 25, // Сколько AP стоит один выстрел
-            stamina: 100, // Сколько AP стоит один выстрел
-            mana: 100, // Сколько AP стоит один выстрел
-            frameSpeed: 30
+            maxAp: 350, // Максимум Очков Действия (Action Points)
+            CostAP: {'idle':2, 'run':1},  // Сколько AP стоит шаг на 1 гекс
+            stamina: 100, // Стамина
+            mana: 100, // Мана
+            frameSpeed: 30,
+            weapons: ['pm', 'lasergun']
         },
         enemy: {
             maxHp: 400,
-            maxAp: 210, // Максимум Очков Действия (Action Points)
-            CostAP: {'idle':2, 'run':1, 'crawl':4},  // Сколько AP стоит шаг на 1 гекс
-            shootCostAP: 25, // Сколько AP стоит один выстрел
-            stamina: 100, // Сколько AP стоит один выстрел
-            mana: 100, // Сколько AP стоит один выстрел
-            frameSpeed: 160 // Скорость покадровой анимации
+            maxAp: 200, // Максимум Очков Действия (Action Points)
+            CostAP: {'idle':2, 'run':1},  // Сколько AP стоит шаг на 1 гекс
+            stamina: 100, // Стамина
+            mana: 100, // Мана
+            frameSpeed: 30, // Скорость покадровой анимации
+            weapons: ['pm', 'lasergun']
         },
         mutant: {
             maxHp: 60,
@@ -60,12 +60,12 @@ export const GAME_CONFIG = {
             category: 'pistol',
             name: "Пистолет Макарова",
             apCost: 8,                 // Выстрел стоит 30 ОД (из 100 возможных за раунд)
-            baseDamage: 20,            // Средний урон при попадании
+            baseDamage: 30,            // Средний урон при попадании
             accuracy: 0.85,            // Базовая точность (85% шанса попасть)
             clip_size: 12,             // Размер обоймы
             modes: [1,3],              // Режимы стрельбы
             spread: 10,                // Разброс пули
-            optimalRange: 5,           // До 5 гексов урон и точность стопроцентные
+            optimalRange: 8,           // До 5 гексов урон и точность стопроцентные
             maxRange: 12,              // Дальше 12 гексов пуля физически не долетит
             damageDropPerHex: 2,       // Снижение урона на гекс
             critChance: 0.15,          // Шанс крита
@@ -77,15 +77,15 @@ export const GAME_CONFIG = {
         lasergun: {
             category: 'laser',
             name: "Лазерная винтовка",
-            apCost: 15,                 // Выстрел стоит 30 ОД (из 100 возможных за раунд)
+            apCost: 25,                 // Выстрел стоит 30 ОД (из 100 возможных за раунд)
             baseDamage: 100,            // Средний урон при попадании
-            accuracy: 0.7,            // Базовая точность (85% шанса попасть)
+            accuracy: 0.8,            // Базовая точность (85% шанса попасть)
             clip_size: 12,             // Размер обоймы
             modes: [1,3],              // Режимы стрельбы
             spread: 30,                // Разброс пули
-            optimalRange: 15,           // До 5 гексов урон и точность стопроцентные
-            maxRange: 20,              // Дальше 12 гексов пуля физически не долетит
-            damageDropPerHex: 20,       // Снижение урона на гекс
+            optimalRange: 20,           // До 5 гексов урон и точность стопроцентные
+            maxRange: 30,              // Дальше 12 гексов пуля физически не долетит
+            damageDropPerHex: 7,       // Снижение урона на гекс
             critChance: 0.10,          // Шанс крита
             critMultiplier: 2.5,       // Модификатор урона
             projectileType: "laser",  // Тип эффекта: обычная пуля

@@ -9,6 +9,7 @@ export class AnimationPlayer {
         this.currentTick = 0;  // Текущий кадр воспроизведения
         this.isPlaying = false;
         this.animation = false;
+        this.lastEvents = [];
     }
 
     /**
@@ -40,11 +41,18 @@ export class AnimationPlayer {
 
         this.script.forEach((enty, index) => {
             const event = enty.timeline[0];
+
             if(event){
-                if(this.currentTick >= event.tick){
-                    if(event.type == 'position_change') this.animation = this.moveAnimation(enty.id, event);
+                const nextEvent = enty.timeline[1];
+                const hasNextMoveWithSameState = nextEvent && nextEvent.type === 'position_change' && nextEvent.state === event.state;
+                const hasLastMoveWithSameState = this.lastEvents[enty.id] && this.lastEvents[enty.id].type === 'position_change' && this.lastEvents[enty.id].state === event.state;
+
+                if(this.currentTick >= event.tick || hasLastMoveWithSameState){
+                    if(event.type == 'position_change') this.animation = this.moveAnimation(enty.id, event, hasNextMoveWithSameState);
                     if(event.type == 'state_change') this.animation = this.changePosAnimation(enty.id, event);
                     if(event.type == 'shoot') this.animation = this.shootAnimation(enty.id, event);
+
+                    this.lastEvents[enty.id] = enty.timeline[0];
                     
                     if(!this.animation) this.script[index].timeline.shift();
                 }
@@ -64,11 +72,15 @@ export class AnimationPlayer {
     }
 
     //Анимация передвижения
-    moveAnimation(entityId, action){
+    moveAnimation(entityId, action, hasNextMoveWithSameState = false){
         if(action.state == 'idle') this.moveSpeed = 1.5;
         if(action.state == 'run') this.moveSpeed = 3;
 
         const entity = window.entities.find(e => e.id === entityId);
+
+        const footstepLoopId = `footsteps_${entity.id}`;
+        const footstepSoundKey = action.state === 'run' ? 'run' : 'idle';
+        audioManager.playLoop(footstepLoopId, footstepSoundKey, 0.15);
 
         entity.state = action.state;
         entity.skin = action.skin;
@@ -107,6 +119,7 @@ export class AnimationPlayer {
             entity.r = action.r;
             entity.updateScreenCoordinates(); // Примагничивание к центру ячейки
             entity.animation = false;
+            if(!hasNextMoveWithSameState) audioManager.stopLoop(footstepLoopId);
             return false;
         } 
     }
@@ -126,13 +139,10 @@ export class AnimationPlayer {
         this.timerTick++;
 
         if(this.timerTick >= 15){
-            entity.animation = false;
             this.timerTick = 0;
+            entity.animation = false;
             return false;
-        }else{
-            return true;
-        }
-        
+        }else return true;
     }
 
     //Анимация стрельбы
@@ -143,6 +153,7 @@ export class AnimationPlayer {
         let targetY;
 
         attacker.lookAt(action.targetHex.q, action.targetHex.r);
+
         if(attacker.state == 'crawl') attacker.skin = 'crawl_'+action.gun.category;
         else attacker.skin = 'idle_'+action.gun.category;
 
@@ -153,9 +164,15 @@ export class AnimationPlayer {
             if(targetHexOnCanvas) {targetX = targetHexOnCanvas.x; targetY = targetHexOnCanvas.y;}
         }
 
-        if(attacker) effectRenderer.addProjectile(effectRenderer.calcDrawXY(attacker, action.gun).x, effectRenderer.calcDrawXY(attacker, action.gun).y, targetX, targetY, action.gun, this._handleBulletHit.bind(this, attacker, hitUnit, targetX, targetY, action));
-        
-        audioManager.play('laser_shoot', 0.2);
+        const targetYOffset = action.targetID ? -45 : 0;
+
+        if(attacker){
+            const muzzle = effectRenderer.calcDrawXY(attacker, action.gun);
+            effectRenderer.addProjectile(muzzle.x, muzzle.y, targetX, targetY, action.gun, this._handleBulletHit.bind(this, attacker, hitUnit, targetX, targetY + targetYOffset, action), targetYOffset);
+        } 
+
+        const nameAudio = action.gun.category+'_shoot';
+        audioManager.play(nameAudio, 0.15);
 
         attacker.animation = false;
         return false;
@@ -168,14 +185,13 @@ export class AnimationPlayer {
                 if(action.isCritical) effectRenderer.addFloatingText(`-${action.damage}!`, targetX, targetY, 'crit');
                 else effectRenderer.addFloatingText(`-${action.damage}`, targetX, targetY, 'normal');
 
-                if(hitUnit.hp <= 0) audioManager.play('laser_death', 0.2);
+                if(hitUnit.hp <= 0) audioManager.play('laser_death', 0.15);
             }
         }else if(action.hitObstacle){
             const realObstacle = this.game.objectmap.objects.find(o => Number(o.q) === Number(action.targetHex.q) && Number(o.r) === Number(action.targetHex.r));
             if(realObstacle){
                 if(realObstacle.hp !== undefined) realObstacle.hp -= action.obstacleDamage;
                 realObstacle.update = true;
-                effectRenderer.addFloatingText(`-${action.obstacleDamage}`, targetX, targetY, '#ffcc00');
 
                  if(action.isObstacleDestroyed){
                     this.game.objectmap.objects = this.game.objectmap.objects.filter(o => o !== realObstacle);

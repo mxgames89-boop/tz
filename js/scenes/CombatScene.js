@@ -41,7 +41,11 @@ export class CombatScene {
         this.grid.generateGrid(); // Генерируем ландшафт и умные стены
         this.objectmap.generateObject(); // Генерируем объекты
         window.entities.push(new Entity('player', 2, 10, this.grid, 'AppTime')); // Добавляем главного игрока
-        window.entities.push(new Entity('enemy', 20, 10, this.grid, 'Громила'));
+        window.entities.push(new Entity('enemy', 47, 32, this.grid, 'Громила'));
+        window.entities.push(new Entity('enemy', 25, 10, this.grid, 'Авганец'));
+        window.entities.push(new Entity('enemy', 28, 10, this.grid, 'Мудила'));
+        //window.entities.push(new Entity('enemy', 20, 20, this.grid, 'Путрушка'));
+        //window.entities.push(new Entity('enemy', 10, 15, this.grid, 'Воевода'));
             
         // Синхронизируем ссылки для рендерера
         this.turnManager.initFirstTurn();

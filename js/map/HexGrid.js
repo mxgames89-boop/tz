@@ -189,44 +189,37 @@ export class HexGrid {
         return path; 
     }
 
+
     //Проверяем полет пули
-    traceBulletRay(startQ, startR, endQ, endR) {
-        const startHex = this.hexes.find(h => Number(h.q) === Number(startQ) && Number(h.r) === Number(startR));
-        const endHex = this.hexes.find(h => Number(h.q) === Number(endQ) && Number(h.r) === Number(endR));
-        if (!startHex || !endHex) return [];
+    traceShootRay(startQ, startR, endQ, endR) {
+      const startCube = this.offsetToCube(startQ, startR);
+      const endCube = this.offsetToCube(endQ, endR);
 
-        const rayPath = [];
-        
-        // Вычисляем расстояние между центрами гексов в пикселях мира
-        const dx = endHex.x - startHex.x;
-        const dy = endHex.y - startHex.y;
-        const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Будем проверять луч каждые 10 пикселей, чтобы не пропустить ни одну ячейку
-        const steps = Math.ceil(pixelDistance / 10);
+      const distance = this.getShootDistance(startQ, startR, endQ, endR);
 
-        // Загружаем геометрию сетки из конфига для обратного просчета пикселей в гексы
-        const R = GAME_CONFIG.grid.radius;
-        const isoYScale = GAME_CONFIG.grid.isoYScale || 0.5; // ваше изометрическое сжатие по вертикали
+      if (distance <= 0) return [];
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            // Находим промежуточную пиксельную точку на линии полета пули
-            const currentX = startHex.x + dx * t;
-            const currentY = startHex.y + dy * t;
-            // Определяем, над каким именно логическим гексом сейчас летит пуля
-            const hexUnderRay = this._getHexUnderMouse(currentX, currentY); // Используем ваш внутренний метод поиска по пикселям
-            
-            if (hexUnderRay) {
-                const lastHex = rayPath[rayPath.length - 1];
-                // Чтобы не дублировать один и тот же гекс много раз, пушим только новые ячейки
-                if (!lastHex || lastHex.q !== hexUnderRay.q || lastHex.r !== hexUnderRay.r) {
-                    rayPath.push({ q: hexUnderRay.q, r: hexUnderRay.r });
-                }
-            }
+      const result = [];
+
+      for (let i = 1; i <= distance; i++) {
+        const t = i / distance;
+        const roundedCube = this.cubeRound(
+          this.cubeLerp(startCube, endCube, t)
+        );
+
+        const hex = this.cubeToOffset(roundedCube);
+
+        const last = result[result.length - 1];
+
+        if (!last || last.q !== hex.q || last.r !== hex.r) {
+          result.push({
+            q: hex.q,
+            r: hex.r
+          });
         }
+      }
 
-        return rayPath;
+      return result;
     }
 
     //Вспомогательный метод вычисления расстояния в гексах (для расчета падения урона)
@@ -271,6 +264,48 @@ export class HexGrid {
       const y = -x - z;
 
       return { x, y, z };
+    }
+
+    cubeToOffset(cube) {
+      const row = Number(cube.z);
+      const col = Number(cube.x) + ((row - (row & 1)) / 2);
+
+      return {
+        q: col,
+        r: row
+      };
+    }
+
+    cubeLerp(a, b, t) {
+      return {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        z: a.z + (b.z - a.z) * t
+      };
+    }
+
+    cubeRound(cube) {
+      let rx = Math.round(cube.x);
+      let ry = Math.round(cube.y);
+      let rz = Math.round(cube.z);
+
+      const xDiff = Math.abs(rx - cube.x);
+      const yDiff = Math.abs(ry - cube.y);
+      const zDiff = Math.abs(rz - cube.z);
+
+      if (xDiff > yDiff && xDiff > zDiff) {
+        rx = -ry - rz;
+      } else if (yDiff > zDiff) {
+        ry = -rx - rz;
+      } else {
+        rz = -rx - ry;
+      }
+
+      return {
+        x: rx,
+        y: ry,
+        z: rz
+      };
     }
 
     // Универсальная дальность для стрельбы по hex-сетке.
